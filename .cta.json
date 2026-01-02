@@ -1,0 +1,16 @@
+{
+  "projectName": "lenslearn",
+  "mode": "file-router",
+  "typescript": true,
+  "tailwind": true,
+  "packageManager": "bun",
+  "git": false,
+  "addOnOptions": {},
+  "version": 1,
+  "framework": "react-cra",
+  "chosenAddOns": [
+    "start",
+    "eslint",
+    "nitro"
+  ]
+}
