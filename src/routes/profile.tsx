@@ -20,7 +20,7 @@ function ProfilePage() {
     getUserProfileFn({ data: undefined }).then(data => {
       setProfile(data || {
         age_group: 'adult',
-        voice_enabled: true,
+        voice_enabled: false,
         language: 'English'
       })
       setIsLoading(false)
@@ -77,7 +77,7 @@ function ProfilePage() {
           <div className="md:col-span-2 space-y-6">
             <section className="bg-white rounded-[32px] p-8 border border-black/5 shadow-sm">
               <h2 className="text-sm font-black uppercase tracking-widest text-zinc-400 mb-8 ml-1">Learning Preferences</h2>
-              
+
               <div className="space-y-6">
                 <div>
                   <label className="block text-xs font-bold text-zinc-900 mb-3 ml-1">Age Group</label>
@@ -86,11 +86,10 @@ function ProfilePage() {
                       <button
                         key={group}
                         onClick={() => setProfile({ ...profile, age_group: group })}
-                        className={`py-3 rounded-2xl border font-bold capitalize transition-all ${
-                          profile.age_group === group 
-                          ? 'bg-zinc-950 border-zinc-950 text-white shadow-lg shadow-black/10' 
+                        className={`py-3 rounded-2xl border font-bold capitalize transition-all ${profile.age_group === group
+                          ? 'bg-zinc-950 border-zinc-950 text-white shadow-lg shadow-black/10'
                           : 'bg-zinc-50 border-black/5 text-zinc-500 hover:border-black/10'
-                        }`}
+                          }`}
                       >
                         {group}
                       </button>
@@ -103,7 +102,8 @@ function ProfilePage() {
                     <p className="font-bold text-zinc-900">Voice Explanations</p>
                     <p className="text-xs text-zinc-500">Have the AI guide read explanations aloud.</p>
                   </div>
-                  <button 
+                  <button
+                    disabled
                     onClick={() => setProfile({ ...profile, voice_enabled: !profile.voice_enabled })}
                     className={`w-12 h-6 rounded-full p-1 transition-colors ${profile.voice_enabled ? 'bg-zinc-950' : 'bg-zinc-200'}`}
                   >
@@ -113,7 +113,7 @@ function ProfilePage() {
 
                 <div>
                   <label className="block text-xs font-bold text-zinc-900 mb-3 ml-1">Language</label>
-                  <select 
+                  <select
                     value={profile.language}
                     onChange={(e) => setProfile({ ...profile, language: e.target.value })}
                     className="w-full bg-zinc-50 border border-black/5 rounded-2xl py-4 px-4 outline-none focus:ring-2 focus:ring-zinc-950/5 focus:border-zinc-950/20 transition-all text-zinc-900"
@@ -128,18 +128,17 @@ function ProfilePage() {
               </div>
             </section>
 
-            <motion.div 
+            <motion.div
               initial={false}
               animate={{ opacity: message ? 1 : 0, y: message ? 0 : 10 }}
-              className={`p-4 rounded-2xl border text-sm font-bold text-center ${
-                message?.type === 'success' ? 'bg-green-50 border-green-100 text-green-600' : 'bg-red-50 border-red-100 text-red-500'
-              }`}
+              className={`p-4 rounded-2xl border text-sm font-bold text-center ${message?.type === 'success' ? 'bg-green-50 border-green-100 text-green-600' : 'bg-red-50 border-red-100 text-red-500'
+                }`}
             >
               {message?.text}
             </motion.div>
 
             <div className="flex justify-end">
-              <button 
+              <button
                 onClick={handleSave}
                 disabled={isSaving}
                 className="bg-zinc-950 text-white px-8 py-4 rounded-2xl font-bold flex items-center gap-2 hover:bg-zinc-800 active:scale-[0.98] transition-all shadow-lg shadow-black/10 disabled:opacity-50"

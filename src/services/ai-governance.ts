@@ -102,7 +102,7 @@ export class AIGovernanceService {
     }
 
     // Model Selection Matrix
-    let selectedModel = 'gemini-3-pro' // Default High
+    let selectedModel = 'gemini-3-flash-preview' // Default High
     let imageRes = '1024x1024'
 
     if (state === 'yellow') {

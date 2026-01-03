@@ -81,21 +81,33 @@ export async function getExplanation(
   question: string,
   profile?: any,
   modelId: string = 'gemini-3-flash-preview',
+  history: { role: string; text: string }[] = [],
 ): Promise<string> {
   const ageGroup = profile?.age_group || 'adult'
   const language = profile?.language || 'English'
   const preferences = profile?.preferences || 'none specified'
+
+  const historyText = history
+    .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
+    .join('\n')
 
   const prompt = `
     You are the LensLearn AI Guide. Your goal is to provide concise, engaging, and highly visual explanations.
     Explain it in ${language} like a world-class teacher.
     Target Audience: ${ageGroup}
     User Interests/Preferences: ${preferences}
-    Context: ${context}
-    Question: ${question}
+    
+    Context: 
+    ${context}
+
+    Conversation History:
+    ${historyText}
+
+    Current Question: ${question}
 
     Tailor the explanation's complexity and tone for a ${ageGroup}. 
     Use examples that might relate to their specified interests (${preferences}).
+    Maintain continuity with the previous conversation. Do NOT re-introduce yourself if you have already spoken.
   `
 
   const textModel = genAI.getGenerativeModel({ model: modelId })

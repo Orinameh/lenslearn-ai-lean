@@ -1,8 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { setCookie } from '@tanstack/react-start/server'
 import { z } from 'zod'
-import { supabase } from '../services/supabase'
 import { getSupabaseServerClient } from '../services/supabase-server'
 
 type CallbackSearch = {
@@ -10,69 +8,53 @@ type CallbackSearch = {
 }
 
 export const Route = createFileRoute('/auth/callback')({
-    validateSearch: (search: Record<string, unknown>): CallbackSearch => {
-        return {
-            code: (search.code as string) || undefined,
-        }
-    },
-    loader: async ({ search }: any) => {
-        const { code } = search as CallbackSearch
-
-        if (code) {
-            const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-
-            if (error) {
-                console.error('OAuth exchange error:', error.message)
-                throw redirect({ to: '/login' })
-            }
-
-            if (data.session) {
-                // Set cookies on the server
-                await handleOAuthSession({
-                    data: {
-                        access_token: data.session.access_token,
-                        refresh_token: data.session.refresh_token,
-                        user_id: data.user.id,
-                    }
-                })
-            }
+    validateSearch: (search: Record<string, unknown>): CallbackSearch => ({
+        code: (search.code as string) || undefined,
+    }),
+    loaderDeps: ({ search }: { search: CallbackSearch }) => ({ code: search.code }),
+    loader: async ({ deps }: { deps: { code?: string } }) => {
+        if (!deps.code) {
+            throw redirect({ to: '/login', search: { error: 'no_code' } })
         }
 
-        throw redirect({ to: '/' })
+        const result = await handleOAuthCallback({ data: { code: deps.code } })
+
+        if (result.success) {
+            throw redirect({ to: '/' })
+        }
+
+        throw redirect({ to: '/login', search: { error: result.error || 'unknown' } })
     },
 })
 
-const handleOAuthSession = createServerFn({ method: "POST" })
+const handleOAuthCallback = createServerFn({ method: "POST" })
     .inputValidator(z.object({
-        access_token: z.string(),
-        refresh_token: z.string(),
-        user_id: z.string(),
+        code: z.string()
     }))
     .handler(async ({ data }) => {
-        setCookie('sb-access-token', data.access_token, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 60 * 60 * 24 * 7
-        })
-        setCookie('sb-refresh-token', data.refresh_token, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 60 * 60 * 24 * 7
-        })
-
-        // Initialize/Update profile
         const serverClient = getSupabaseServerClient()
-        await serverClient
+
+        const { data: sessionData, error } = await serverClient.auth.exchangeCodeForSession(data.code)
+
+        if (error || !sessionData.session || !sessionData.user) {
+            return { success: false, error: 'auth_failed' }
+        }
+
+        const { error: profileError } = await serverClient
             .from('profiles')
             .upsert({
-                user_id: data.user_id,
-                provider: 'google',
+                user_id: sessionData.user.id,
+                email: sessionData.user.email,
+                full_name: sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || null,
+                provider: sessionData.user.app_metadata?.provider || 'google',
                 updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id'
             })
+
+        if (profileError) {
+            return { success: false, error: 'profile_failed' }
+        }
 
         return { success: true }
     })

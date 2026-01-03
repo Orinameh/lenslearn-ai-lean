@@ -1,7 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
    Sparkles,
    Send,
@@ -25,6 +27,8 @@ export const Route = createFileRoute('/learn/$id')({
 
 function LearnPage() {
    const { id } = Route.useParams()
+   const router = useRouter()
+
    const [messages, setMessages] = useState([
       { role: 'assistant', text: "Welcome to this interactive world! I've analyzed the scene and identified 3 key learning hotspots for you to explore. Where would you like to start?" }
    ])
@@ -43,14 +47,15 @@ function LearnPage() {
          const response = await getExplanationFn({
             data: {
                context: "Global Context: Learning scene about " + id,
-               question: userMessage
+               question: userMessage,
+               history: messages
             }
          })
          setMessages(prev => [...prev, { role: 'assistant', text: response || "I'm sorry, I couldn't generate an explanation right now." }])
       } catch (error: any) {
+         console.error(error)
          if (error.message?.includes('PAYMENT_REQUIRED')) {
             setShowUpgradeModal(true)
-            // Remove the user message that failed? Or keep it? Keeping it is fine.
             setMessages(prev => [...prev, { role: 'assistant', text: "You've reached your free limit. Please upgrade to continue learning." }])
          } else {
             setMessages(prev => [...prev, { role: 'assistant', text: "There was an error connecting to the AI guide." }])
@@ -67,7 +72,7 @@ function LearnPage() {
             {/* Scene Header */}
             <div className="absolute top-6 left-6 right-6 z-20 flex items-center justify-between">
                <div className="flex items-center gap-4">
-                  <button className="w-10 h-10 rounded-full bg-white border border-black/5 flex items-center justify-center hover:bg-zinc-50 transition-colors shadow-sm">
+                  <button onClick={() => router.history.back()} className="w-10 h-10 rounded-full bg-white border border-black/5 flex items-center justify-center hover:bg-zinc-50 transition-colors shadow-sm">
                      <ChevronLeft size={20} className="text-zinc-400" />
                   </button>
                   <div className="bg-white px-4 py-2 rounded-2xl flex items-center gap-2 border border-black/5 shadow-sm">
@@ -152,21 +157,48 @@ function LearnPage() {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
                {messages.map((m, i) => (
-                  <div key={i} className={`flex flex - col ${m.role === 'user' ? 'items-end' : 'items-start'} `}>
-                     <div className={`max - w - [90 %] p - 4 rounded - 2xl text - sm leading - relaxed ${m.role === 'user'
-                        ? 'bg-zinc-900 text-white rounded-tr-none shadow-lg'
-                        : 'bg-zinc-50 border border-black/5 text-zinc-900 rounded-tl-none'
-                        } `}>
-                        {m.text}
+                  <div key={i} className={`flex flex-col mb-6 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                     <div className={`max-w-[85%] p-6 rounded-[24px] text-sm leading-7 shadow-sm ${m.role === 'user'
+                        ? 'bg-zinc-900 text-white rounded-tr-sm shadow-zinc-900/10'
+                        : 'bg-white border border-black/5 text-zinc-600 rounded-tl-sm shadow-black/5 overflow-hidden'
+                        }`}>
+                        {m.role === 'user' ? (
+                           m.text
+                        ) : (
+                           <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                 h1: ({ node, ...props }: any) => <h1 className="text-xl font-display font-bold text-zinc-900 mt-6 mb-3 first:mt-0" {...props} />,
+                                 h2: ({ node, ...props }: any) => <h2 className="text-lg font-display font-bold text-zinc-900 mt-5 mb-2 first:mt-0" {...props} />,
+                                 h3: ({ node, ...props }: any) => <h3 className="text-base font-bold text-zinc-900 mt-4 mb-2" {...props} />,
+                                 p: ({ node, ...props }: any) => <p className="mb-4 last:mb-0 leading-relaxed text-zinc-600" {...props} />,
+                                 ul: ({ node, ...props }: any) => <ul className="space-y-2 mb-4 ml-1" {...props} />,
+                                 ol: ({ node, ...props }: any) => <ol className="space-y-2 mb-4 list-decimal list-inside" {...props} />,
+                                 li: ({ node, ...props }: any) => (
+                                    <li className="flex gap-2">
+                                       <span className="mt-2.5 w-1.5 h-1.5 rounded-full bg-zinc-300 shrink-0" />
+                                       <span className="flex-1 text-zinc-600">{props.children}</span>
+                                    </li>
+                                 ),
+                                 strong: ({ node, ...props }: any) => <strong className="font-bold text-zinc-900" {...props} />,
+                                 em: ({ node, ...props }: any) => <em className="italic text-zinc-500" {...props} />,
+                                 blockquote: ({ node, ...props }: any) => <blockquote className="border-l-4 border-zinc-200 pl-4 py-1 my-4 italic text-zinc-500 bg-zinc-50 rounded-r-lg" {...props} />,
+                                 hr: ({ node, ...props }: any) => <hr className="my-6 border-zinc-100" {...props} />,
+                                 code: ({ node, ...props }: any) => <code className="bg-zinc-100 text-pink-600 px-1.5 py-0.5 rounded text-xs font-mono font-bold" {...props} />
+                              }}
+                           >
+                              {m.text}
+                           </ReactMarkdown>
+                        )}
                      </div>
-                     <span className="text-[9px] uppercase font-bold text-zinc-300 mt-2 px-1">
+                     <span className="text-[10px] font-bold text-zinc-300 mt-2 px-1 uppercase tracking-wider">
                         {m.role === 'user' ? 'You' : 'LensLearn Agent'}
                      </span>
                   </div>
                ))}
                {isLoading && (
                   <div className="flex flex-col items-start">
-                     <div className="bg-zinc-50 border border-black/5 p-4 rounded-2xl rounded-tl-none">
+                     <div className="bg-white border border-black/5 p-3 rounded-2xl rounded-tl-sm shadow-sm opacity-80">
                         <Loader2 size={16} className="animate-spin text-zinc-400" />
                      </div>
                   </div>

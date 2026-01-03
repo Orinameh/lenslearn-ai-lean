@@ -1,15 +1,15 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { motion } from 'framer-motion'
-import { Mail, Lock, User, ArrowRight, Sparkles, Loader2 } from 'lucide-react'
+import { Mail, User, ArrowRight, Sparkles, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import toast from 'react-hot-toast'
-import { registerUserFn, signInWithGoogleFn, RegisterSchema } from '../services/auth-funcs'
+import { sendOtpFn, verifyOtpFn, signInWithGoogleFn, EmailOtpSchema, VerifyOtpSchema } from '../services/auth-funcs'
 import { useAuthStore } from '../services/authStore'
 
-type SignupFormValues = z.infer<typeof RegisterSchema>
+type SignupFormValues = z.infer<typeof EmailOtpSchema> & { token?: string }
 
 export const Route = createFileRoute('/signup')({
     component: SignupPage,
@@ -17,6 +17,8 @@ export const Route = createFileRoute('/signup')({
 
 function SignupPage() {
     const [isLoading, setIsLoading] = useState(false)
+    const [step, setStep] = useState<'email' | 'otp'>('email')
+    const [email, setEmail] = useState('')
 
     const navigate = Route.useNavigate()
     const { setSession } = useAuthStore()
@@ -26,7 +28,7 @@ function SignupPage() {
         handleSubmit,
         formState: { errors },
     } = useForm<SignupFormValues>({
-        resolver: zodResolver(RegisterSchema),
+        resolver: zodResolver(step === 'email' ? EmailOtpSchema : VerifyOtpSchema),
         mode: 'onBlur',
     })
 
@@ -34,15 +36,18 @@ function SignupPage() {
         setIsLoading(true)
 
         try {
-            const result = await registerUserFn({ data: { ...data, provider: 'email' } })
-            if (result.session) {
-                setSession(result.session)
-                toast.success('Account created successfully!')
-                navigate({ to: '/' })
+            if (step === 'email') {
+                await sendOtpFn({ data: { ...data, provider: 'email' } })
+                setEmail(data.email)
+                setStep('otp')
+                toast.success('Code sent! Check your email.')
             } else {
-                toast.success('Verification email sent! Please check your inbox.')
-                navigate({ to: '/' })
-
+                const result = await verifyOtpFn({ data: { email, token: data.token! } })
+                if (result.session) {
+                    setSession(result.session)
+                    toast.success('Account created!')
+                    navigate({ to: '/' })
+                }
             }
         } catch (err: any) {
             toast.error(err.message || 'Failed to sign up')
@@ -63,98 +68,6 @@ function SignupPage() {
                     </div>
                     <h1 className="text-3xl font-display text-zinc-900 mb-2">Create Account</h1>
                     <p className="text-zinc-500 text-sm">Join LensLearn and start your journey today.</p>
-
-                </div>
-
-                <form className="space-y-4" onSubmit={handleSubmit(handleSignup)}>
-                    <div className="space-y-1.5">
-                        <label className={`text-xs font-black uppercase tracking-widest ml-1 transition-colors ${errors.name ? 'text-red-500' : 'text-zinc-400'}`}>
-                            Full Name
-                        </label>
-                        <div className="relative group">
-                            <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${errors.name ? 'text-red-500' : 'text-zinc-400 group-focus-within:text-zinc-900'}`}>
-                                <User size={18} />
-                            </div>
-                            <input
-                                {...register('name')}
-                                type="text"
-                                placeholder="John Doe"
-                                className={`w-full bg-zinc-50 border rounded-2xl py-4 pl-12 pr-4 outline-none transition-all text-zinc-900 placeholder:text-zinc-300 ${errors.name
-                                    ? 'border-red-500 focus:ring-2 focus:ring-red-500/10'
-                                    : 'border-black/5 focus:ring-2 focus:ring-zinc-950/5 focus:border-zinc-950/20'
-                                    }`}
-                            />
-                        </div>
-                        {errors.name && (
-                            <p className="text-xs text-red-500 ml-1">{errors.name.message}</p>
-                        )}
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <label className={`text-xs font-black uppercase tracking-widest ml-1 transition-colors ${errors.email ? 'text-red-500' : 'text-zinc-400'}`}>
-                            Email Address
-                        </label>
-                        <div className="relative group">
-                            <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${errors.email ? 'text-red-500' : 'text-zinc-400 group-focus-within:text-zinc-900'}`}>
-                                <Mail size={18} />
-                            </div>
-                            <input
-                                {...register('email')}
-                                type="email"
-                                placeholder="name@example.com"
-                                className={`w-full bg-zinc-50 border rounded-2xl py-4 pl-12 pr-4 outline-none transition-all text-zinc-900 placeholder:text-zinc-300 ${errors.email
-                                    ? 'border-red-500 focus:ring-2 focus:ring-red-500/10'
-                                    : 'border-black/5 focus:ring-2 focus:ring-zinc-950/5 focus:border-zinc-950/20'
-                                    }`}
-                            />
-                        </div>
-                        {errors.email && (
-                            <p className="text-xs text-red-500 ml-1">{errors.email.message}</p>
-                        )}
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <label className={`text-xs font-black uppercase tracking-widest ml-1 transition-colors ${errors.password ? 'text-red-500' : 'text-zinc-400'}`}>
-                            Password
-                        </label>
-                        <div className="relative group">
-                            <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${errors.password ? 'text-red-500' : 'text-zinc-400 group-focus-within:text-zinc-900'}`}>
-                                <Lock size={18} />
-                            </div>
-                            <input
-                                {...register('password')}
-                                type="password"
-                                placeholder="••••••••"
-                                className={`w-full bg-zinc-50 border rounded-2xl py-4 pl-12 pr-4 outline-none transition-all text-zinc-900 placeholder:text-zinc-300 ${errors.password
-                                    ? 'border-red-500 focus:ring-2 focus:ring-red-500/10'
-                                    : 'border-black/5 focus:ring-2 focus:ring-zinc-950/5 focus:border-zinc-950/20'
-                                    }`}
-                            />
-                        </div>
-                        {errors.password ? (
-                            <p className="text-xs text-red-500 ml-1">{errors.password.message}</p>
-                        ) : (
-                            <p className="text-xs text-zinc-400 ml-1 mt-2">Must be at least 8 characters long.</p>
-                        )}
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full bg-zinc-950 text-white rounded-2xl py-4 font-bold flex items-center justify-center gap-2 hover:bg-zinc-800 active:scale-[0.98] transition-all shadow-lg shadow-black/10 mt-6 disabled:opacity-50"
-                    >
-                        {isLoading ? <Loader2 className="animate-spin" size={18} /> : 'Get Started'}
-                        <ArrowRight size={18} />
-                    </button>
-                </form>
-
-                <div className="relative my-8">
-                    <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-black/5"></div>
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-white px-4 text-zinc-400 font-bold tracking-widest">Or continue with</span>
-                    </div>
                 </div>
 
                 <button
@@ -182,8 +95,101 @@ function SignupPage() {
                             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                         />
                     </svg>
-                    Google
+                    Continue with Google
                 </button>
+
+                <div className="relative my-8">
+                    <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-black/5"></div>
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-white px-4 text-zinc-400 font-bold tracking-widest">Or continue with email</span>
+                    </div>
+                </div>
+
+                <form className="space-y-4" onSubmit={handleSubmit(handleSignup)}>
+                    {step === 'email' ? (
+                        <>
+                            <div className="space-y-1.5">
+                                <label className={`text-xs font-black uppercase tracking-widest ml-1 transition-colors ${errors.name ? 'text-red-500' : 'text-zinc-400'}`}>
+                                    Full Name
+                                </label>
+                                <div className="relative group">
+                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${errors.name ? 'text-red-500' : 'text-zinc-400 group-focus-within:text-zinc-900'}`}>
+                                        <User size={18} />
+                                    </div>
+                                    <input
+                                        {...register('name')}
+                                        type="text"
+                                        placeholder="John Doe"
+                                        className={`w-full bg-zinc-50 border rounded-2xl py-4 pl-12 pr-4 outline-none transition-all text-zinc-900 placeholder:text-zinc-300 ${errors.name
+                                            ? 'border-red-500 focus:ring-2 focus:ring-red-500/10'
+                                            : 'border-black/5 focus:ring-2 focus:ring-zinc-950/5 focus:border-zinc-950/20'
+                                            }`}
+                                    />
+                                </div>
+                                {errors.name && (
+                                    <p className="text-xs text-red-500 ml-1">{errors.name.message}</p>
+                                )}
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className={`text-xs font-black uppercase tracking-widest ml-1 transition-colors ${errors.email ? 'text-red-500' : 'text-zinc-400'}`}>
+                                    Email Address
+                                </label>
+                                <div className="relative group">
+                                    <div className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${errors.email ? 'text-red-500' : 'text-zinc-400 group-focus-within:text-zinc-900'}`}>
+                                        <Mail size={18} />
+                                    </div>
+                                    <input
+                                        {...register('email')}
+                                        type="email"
+                                        placeholder="name@example.com"
+                                        className={`w-full bg-zinc-50 border rounded-2xl py-4 pl-12 pr-4 outline-none transition-all text-zinc-900 placeholder:text-zinc-300 ${errors.email
+                                            ? 'border-red-500 focus:ring-2 focus:ring-red-500/10'
+                                            : 'border-black/5 focus:ring-2 focus:ring-zinc-950/5 focus:border-zinc-950/20'
+                                            }`}
+                                    />
+                                </div>
+                                {errors.email && (
+                                    <p className="text-xs text-red-500 ml-1">{errors.email.message}</p>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-black uppercase tracking-widest ml-1 text-zinc-400">
+                                Enter Code sent to {email}
+                            </label>
+                            <input
+                                {...register('token')}
+                                type="text"
+                                placeholder="123456"
+                                className="w-full bg-zinc-50 border border-black/5 rounded-2xl py-4 px-4 text-center text-2xl font-display tracking-widest transition-all text-zinc-900 placeholder:text-zinc-300 focus:ring-2 focus:ring-zinc-950/5 focus:border-zinc-950/20 outline-none"
+                            />
+                            {errors.token && (
+                                <p className="text-xs text-red-500 ml-1">{(errors as any).token?.message}</p>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setStep('email')}
+                                className="text-xs text-zinc-400 font-bold hover:text-zinc-900 block w-full text-center mt-2"
+                            >
+                                Change email
+                            </button>
+                        </div>
+                    )}
+
+                    <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full bg-zinc-950 text-white rounded-2xl py-4 font-bold flex items-center justify-center gap-2 hover:bg-zinc-800 active:scale-[0.98] transition-all shadow-lg shadow-black/10 mt-6 disabled:opacity-50"
+                    >
+                        {isLoading ? <Loader2 className="animate-spin" size={18} /> : (step === 'email' ? 'Continue' : 'Verify & Sign Up')}
+                        <ArrowRight size={18} />
+                    </button>
+                </form>
+
 
                 <p className="mt-8 text-center text-sm text-zinc-500">
                     Already have an account?{' '}

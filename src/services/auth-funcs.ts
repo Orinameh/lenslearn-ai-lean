@@ -1,138 +1,77 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
-import bcrypt from 'bcryptjs'
 import { supabase } from './supabase'
 import { getSupabaseServerClient } from './supabase-server'
+import { getRequest } from '@tanstack/react-start/server'
 
-export const RegisterSchema = z.object({
+export const EmailOtpSchema = z.object({
   email: z.email('Invalid email address'),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters long')
-    .regex(/[a-zA-Z]/, 'Password must contain at least one letter')
-    .regex(/[0-9]/, 'Password must contain at least one number')
-    .regex(
-      /[^a-zA-Z0-9]/,
-      'Password must contain at least one special character',
-    ),
-  name: z.string().min(2, 'Name must be at least 2 characters'),
   provider: z.enum(['email', 'google']).optional(),
+  name: z.string().optional(),
   role: z.enum(['user', 'admin']).default('user').optional(),
 })
 
-export const LoginSchema = z.object({
+export const VerifyOtpSchema = z.object({
   email: z.email('Invalid email address'),
-  password: z
-    .string()
-    .min(1, 'Password is required')
-    .regex(/[a-zA-Z]/, 'Password must contain at least one letter')
-    .regex(/[0-9]/, 'Password must contain at least one number')
-    .regex(
-      /[^a-zA-Z0-9]/,
-      'Password must contain at least one special character',
-    ),
-  provider: z.enum(['email', 'google']).optional(),
+  token: z.string().min(8, 'Token must be 8 digits'),
 })
 
-// Manual bcrypt hashing with random salt
-const hashPassword = (password: string) => {
-  return bcrypt.hashSync(password, 10)
-}
-
-export const registerUserFn = createServerFn({ method: 'POST' })
-  .inputValidator(RegisterSchema)
+export const sendOtpFn = createServerFn({ method: 'POST' })
+  .inputValidator(EmailOtpSchema)
   .handler(async ({ data }) => {
-    const { email, password, name, provider = 'email' } = data
-    const hashedPassword = hashPassword(password)
+    const { email, name, role } = data
 
-    const { data: authData, error } = await supabase.auth.signUp({
+    const options: any = {
+      // We still define this for magic link fallback, but user wants OTP code
+      emailRedirectTo: `${process.env.VITE_SUPABASE_URL || 'http://localhost:3000'}/auth/callback`,
+      shouldCreateUser: true,
+    }
+
+    const metadata: any = {}
+    if (name) metadata.full_name = name
+    if (role) metadata.role = role
+
+    if (Object.keys(metadata).length > 0) {
+      options.data = metadata
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
       email,
-      password: hashedPassword,
-      options: {
-        data: {
-          full_name: name,
-        },
-      },
+      ...options,
     })
-
-    console.log(authData, error)
 
     if (error) throw new Error(error.message)
 
-    // Create/Update profile with provider info and password hash
-    if (authData.user) {
-      try {
-        const serverClient = getSupabaseServerClient()
-        const { error: profileError } = await serverClient
-          .from('profiles')
-          .upsert({
-            user_id: authData.user.id,
-            email: email,
-            password: hashedPassword,
-            full_name: name,
-            provider: provider,
-            role: data.role || 'user',
-            updated_at: new Date().toISOString(),
-          })
-
-        if (profileError) {
-          console.error('Failed to create profile:', profileError)
-          // If upsert fails, we should probably rollback the auth user creation or throw
-          throw new Error('Failed to create user profile')
-        }
-      } catch (err: any) {
-        console.error('Profile creation error:', err)
-        // Attempt to clean up auth user if profile fails?
-        // For now, easier to throw so user knows something went wrong.
-        throw new Error(err.message || 'Failed to initialize user profile')
-      }
-    }
-
-    return authData
+    return { success: true }
   })
 
-export const loginUserFn = createServerFn({ method: 'POST' })
-  .inputValidator(LoginSchema)
+export const verifyOtpFn = createServerFn({ method: 'POST' })
+  .inputValidator(VerifyOtpSchema)
   .handler(async ({ data }) => {
-    const { email, password, provider = 'email' } = data
-
-    // 1. Fetch the stored hash from the profiles table
+    const { email, token } = data
     const serverClient = getSupabaseServerClient()
-    const { data: profile, error: profileError } = await serverClient
-      .from('profiles')
-      .select('password')
-      .eq('email', email)
-      .single()
-    console.log(profile, profileError)
-    if (profileError || !profile?.password) {
-      throw new Error('User not found or password not set')
-    }
 
-    // 2. Manually compare the plain password with the stored hash
-    const isPasswordCorrect = bcrypt.compareSync(password, profile.password)
-    if (!isPasswordCorrect) {
-      throw new Error('Invalid password')
-    }
-
-    // 3. Log into Supabase Auth using the STORED HASH as the password
-    const { data: authData, error } = await supabase.auth.signInWithPassword({
+    const { data: sessionData, error } = await serverClient.auth.verifyOtp({
       email,
-      password: profile.password,
+      token,
+      type: 'email',
     })
 
     if (error) throw new Error(error.message)
 
-    // Update profile with provider info for analytics
-    if (authData.user) {
-      const serverClient = getSupabaseServerClient()
+    // Update profile with comprehensive user details
+    if (sessionData.user) {
       await serverClient.from('profiles').upsert({
-        user_id: authData.user.id,
-        provider: provider,
+        user_id: sessionData.user.id,
+        email: sessionData.user.email,
+        full_name: sessionData.user.user_metadata?.full_name,
+        role: sessionData.user.user_metadata?.role || 'user',
+        provider: 'email',
         updated_at: new Date().toISOString(),
       })
     }
 
-    return authData
+    return sessionData
   })
 
 export const logoutUserFn = createServerFn({ method: 'POST' }).handler(
@@ -159,14 +98,25 @@ export const checkSessionFn = createServerFn({ method: 'GET' }).handler(
 
 export const signInWithGoogleFn = createServerFn({ method: 'POST' }).handler(
   async () => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const serverClient = getSupabaseServerClient()
+
+    // Get the request to build the correct redirect URL
+    const request = getRequest()
+    const origin = new URL(request.url).origin
+
+    const { data, error } = await serverClient.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${process.env.VITE_APP_URL || 'http://localhost:3000'}/auth/callback`,
+        redirectTo: `${origin || 'http://localhost:3000'}/auth/callback`,
+        // Force PKCE code flow
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
       },
     })
 
     if (error) throw new Error(error.message)
-    return data
+    return { url: data?.url }
   },
 )

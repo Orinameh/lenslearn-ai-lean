@@ -57,7 +57,13 @@ export const analyzeSceneFn = createServerFn({ method: 'POST' })
   })
 
 export const getExplanationFn = createServerFn({ method: 'POST' })
-  .inputValidator((d: { context: string; question: string }) => d)
+  .inputValidator(
+    (d: {
+      context: string
+      question: string
+      history?: { role: string; text: string }[]
+    }) => d,
+  )
   .handler(async ({ data }) => {
     const { user, supabase } = await requireUser()
     const serverClient = getSupabaseServerClient()
@@ -93,6 +99,7 @@ export const getExplanationFn = createServerFn({ method: 'POST' })
       data.question,
       profile,
       decision.model,
+      data.history || [],
     )
 
     // 3. Audit Cost (Async)
