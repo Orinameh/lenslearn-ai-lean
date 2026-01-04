@@ -106,10 +106,10 @@ export class AIGovernanceService {
     let imageRes = '1024x1024'
 
     if (state === 'yellow') {
-      selectedModel = 'gemini-3-flash-preview'
+      selectedModel = 'gemini-2.5-flash'
       imageRes = '512x512' // Optimization
     } else if (state === 'red') {
-      selectedModel = 'gemini-3-flash-preview' // Lowest cost
+      selectedModel = 'gemini-2.5-flash' // Lowest cost
       if (requestType === 'image') {
         // Disable image gen in red state to save budget
         return { canProceed: false, model: 'none', tier: 'red' }

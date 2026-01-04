@@ -158,7 +158,7 @@ function LearnPage() {
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
                {messages.map((m, i) => (
                   <div key={i} className={`flex flex-col mb-6 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                     <div className={`max-w-[85%] p-6 rounded-[24px] text-sm leading-7 shadow-sm ${m.role === 'user'
+                     <div className={`max-w-[85%] py-3 px-4 rounded-[24px] text-sm leading-7 shadow-sm ${m.role === 'user'
                         ? 'bg-zinc-900 text-white rounded-tr-sm shadow-zinc-900/10'
                         : 'bg-white border border-black/5 text-zinc-600 rounded-tl-sm shadow-black/5 overflow-hidden'
                         }`}>
