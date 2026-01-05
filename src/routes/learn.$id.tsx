@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import ReactMarkdown from 'react-markdown'
@@ -15,137 +15,319 @@ import {
    Share2,
    Loader2
 } from 'lucide-react'
-import { getExplanationFn } from '../services/server-funcs'
+import { getExplanationStreamFn } from '../services/server-funcs'
 import { UpgradeModal } from '../components/UpgradeModal'
 
 import { authGuard } from '../services/authMiddleware'
 
 export const Route = createFileRoute('/learn/$id')({
    beforeLoad: authGuard,
+   loader: ({ params }) => {
+      // Convert kebab-case ID back to readable prompt
+      const prompt = params.id.replace(/-/g, ' ')
+      return { prompt }
+   },
    component: LearnPage,
 })
 
+export type Message = {
+   role: 'user' | 'assistant'
+   text: string
+}
+
 function LearnPage() {
    const { id } = Route.useParams()
+   const search = Route.useSearch() as { type?: 'text' | 'image' }
+   const loaderData = Route.useLoaderData()
    const router = useRouter()
+   const messagesEndRef = useRef<HTMLDivElement>(null)
+   const hasAutoSent = useRef(false)
 
-   const [messages, setMessages] = useState([
-      { role: 'assistant', text: "Welcome to this interactive world! I've analyzed the scene and identified 3 key learning hotspots for you to explore. Where would you like to start?" }
+   // Determine if we should show the scene canvas
+   const showScene = search.type === 'image'
+
+   const [messages, setMessages] = useState<Message[]>([
+      {
+         role: 'assistant', text: showScene
+            ? "Welcome to this interactive world! I've analyzed the scene and identified 3 key learning hotspots for you to explore. Where would you like to start?"
+            : "Hello! I'm your LensLearn AI Guide. What would you like to learn about today?"
+      }
    ])
+
+   // Add a ref to track the latest messages
+   const messagesRef = useRef(messages)
+
+   // Keep ref in sync with state
+   useEffect(() => {
+      messagesRef.current = messages
+   }, [messages])
+
+
    const [input, setInput] = useState('')
    const [isLoading, setIsLoading] = useState(false)
    const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
-   const handleSend = async () => {
-      if (!input.trim() || isLoading) return
-      const userMessage = input
-      setMessages(prev => [...prev, { role: 'user', text: userMessage }])
-      setInput('')
+   // Auto-scroll to bottom when messages change, but only if user is already near bottom
+   const scrollToBottom = () => {
+      const container = messagesContainerRef.current
+      if (!container) return
+
+      // Check if user is near the bottom (within 100px)
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+
+      // Only auto-scroll if user is already near bottom
+      if (isNearBottom) {
+         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }
+   }
+
+   useEffect(() => {
+      if (!messagesContainerRef.current) return
+      scrollToBottom()
+   }, [messages])
+
+   // In your LearnPage component
+   const sendMessage = async (userMessage: string) => {
       setIsLoading(true)
 
+      // Use ref to get the latest messages (includes the user message)
+      const currentMessages = messagesRef.current
+
+      // Add placeholder assistant message
+      setMessages(prev => {
+         if (prev[prev.length - 1]?.role === 'assistant' && prev[prev.length - 1]?.text === '') {
+            return prev
+         }
+         return [...prev, { role: 'assistant', text: '' }]
+      })
+
       try {
-         const response = await getExplanationFn({
+         const response = await getExplanationStreamFn({
             data: {
-               context: "Global Context: Learning scene about " + id,
+               context: showScene
+                  ? "Global Context: Learning scene about " + id
+                  : "Global Context: Learning about " + id,
                question: userMessage,
-               history: messages
+               // Use the messages from ref (which includes user message)
+               history: currentMessages
             }
          })
-         setMessages(prev => [...prev, { role: 'assistant', text: response || "I'm sorry, I couldn't generate an explanation right now." }])
-      } catch (error: any) {
-         console.error(error)
-         if (error.message?.includes('PAYMENT_REQUIRED')) {
-            setShowUpgradeModal(true)
-            setMessages(prev => [...prev, { role: 'assistant', text: "You've reached your free limit. Please upgrade to continue learning." }])
-         } else {
-            setMessages(prev => [...prev, { role: 'assistant', text: "There was an error connecting to the AI guide." }])
+
+         if (!response.ok) {
+            if (response.status === 402) {
+               setShowUpgradeModal(true)
+               setMessages(prev => {
+                  const newMessages = [...prev]
+                  // Update the last message (assistant placeholder)
+                  newMessages[newMessages.length - 1] = {
+                     role: 'assistant',
+                     text: "You've reached your free limit. Please upgrade to continue learning."
+                  }
+                  return newMessages
+               })
+               setIsLoading(false)
+               return
+            }
+
+            const errorText = await response.text()
+            throw new Error(errorText || 'Failed to get response')
          }
+
+         const reader = response.body?.getReader()
+         if (!reader) throw new Error('No reader available')
+
+         const decoder = new TextDecoder()
+         let accumulatedText = ''
+         let lastUpdateTime = Date.now()
+
+         try {
+            while (true) {
+               const { done, value } = await reader.read()
+
+               if (done) {
+                  break
+               }
+
+               const chunk = decoder.decode(value, { stream: true })
+               accumulatedText += chunk
+
+               const now = Date.now()
+               if (now - lastUpdateTime > 50 || done) {
+                  setMessages(prev => {
+                     const newMessages = [...prev]
+                     // Update last message (assistant)
+                     newMessages[newMessages.length - 1] = {
+                        role: 'assistant',
+                        text: accumulatedText
+                     }
+                     return newMessages
+                  })
+                  lastUpdateTime = now
+               }
+            }
+         } catch (readError: any) {
+            console.error('Stream reading error:', readError)
+
+            if (accumulatedText) {
+               setMessages(prev => {
+                  const newMessages = [...prev]
+                  newMessages[newMessages.length - 1] = {
+                     role: 'assistant',
+                     text: accumulatedText + '\n\n[Connection interrupted]'
+                  }
+                  return newMessages
+               })
+            } else {
+               throw readError
+            }
+         } finally {
+            try {
+               reader.releaseLock()
+            } catch { }
+         }
+
+      } catch (error: any) {
+         console.error('Send message error:', error)
+
+         setMessages(prev => {
+            const newMessages = [...prev]
+            // Update last message with error
+            newMessages[newMessages.length - 1] = {
+               role: 'assistant',
+               text: "There was an error connecting to the AI guide. Please try again."
+            }
+            return newMessages
+         })
+         toast.error('Failed to connect to AI guide')
       } finally {
          setIsLoading(false)
       }
    }
 
+   const handleSend = async () => {
+      if (!input.trim() || isLoading) return
+
+      const userMessage = input
+      setInput('')
+
+      // Add user message
+      setMessages(prev => {
+         const newMessage: Message = { role: 'user', text: userMessage }
+         const updated = [...prev, newMessage]
+         messagesRef.current = updated
+         return updated
+      })
+
+      // Call sendMessage - it will add the assistant placeholder
+      await sendMessage(userMessage)
+
+   }
+
+   // Auto-send initial prompt for text mode
+   useEffect(() => {
+      if (showScene) return
+      if (!loaderData.prompt) return
+      if (hasAutoSent.current) return
+
+      hasAutoSent.current = true
+
+      setMessages(prev => {
+         const newMessage: Message = { role: 'user', text: loaderData.prompt }
+         const updated = [...prev, newMessage]
+         messagesRef.current = updated
+         return updated
+      })
+
+      sendMessage(loaderData.prompt)
+   }, [showScene, loaderData.prompt])
+
+
+
+
    return (
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] overflow-hidden bg-white">
-         {/* Visual Scene Area */}
-         <div className="flex-1 relative bg-zinc-50 flex flex-col">
-            {/* Scene Header */}
-            <div className="absolute top-6 left-6 right-6 z-20 flex items-center justify-between">
-               <div className="flex items-center gap-4">
-                  <button onClick={() => router.history.back()} className="w-10 h-10 rounded-full bg-white border border-black/5 flex items-center justify-center hover:bg-zinc-50 transition-colors shadow-sm">
-                     <ChevronLeft size={20} className="text-zinc-400" />
-                  </button>
-                  <div className="bg-white px-4 py-2 rounded-2xl flex items-center gap-2 border border-black/5 shadow-sm">
-                     <div className="w-2 h-2 rounded-full bg-green-500" />
-                     <span className="text-[10px] font-bold text-zinc-900 uppercase tracking-widest">{id}</span>
-                  </div>
-               </div>
-               <div className="flex items-center gap-2">
-                  <button className="w-10 h-10 rounded-full bg-white border border-black/5 flex items-center justify-center hover:bg-zinc-50 transition-colors shadow-sm">
-                     <Volume2 size={18} className="text-zinc-400" />
-                  </button>
-                  <button className="w-10 h-10 rounded-full bg-white border border-black/5 flex items-center justify-center hover:bg-zinc-50 transition-colors shadow-sm">
-                     <Share2 size={18} className="text-zinc-400" />
-                  </button>
-               </div>
-            </div>
-
-            {/* The Scene (Interactive Canvas/Image) */}
-            <div className="flex-1 relative overflow-hidden group p-8">
-               <div className="w-full h-full rounded-[40px] bg-white border border-black/5 shadow-2xl shadow-black/5 flex items-center justify-center relative overflow-hidden">
-                  {/* This would be the AI generated scene */}
-                  <Sparkles size={80} className="text-zinc-100 animate-pulse" />
-
-                  {/* Hotspots (Interactive points) */}
-                  <motion.button
-                     initial={{ scale: 0 }}
-                     animate={{ scale: 1 }}
-                     className="absolute top-1/3 left-1/4 z-30 w-8 h-8 rounded-full bg-zinc-950 border-4 border-white shadow-xl flex items-center justify-center group/hotspot"
-                  >
-                     <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-zinc-950 text-white px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/hotspot:opacity-100 transition-opacity">
-                        Historical Origin
+      <div className={`flex flex-col ${showScene ? 'lg:flex-row' : ''} h-[calc(100vh-64px)] overflow-hidden bg-white`}>
+         {/* Visual Scene Area - Only show for image-based learning */}
+         {showScene && (
+            <div className="flex-1 relative bg-zinc-50 flex flex-col">
+               {/* Scene Header */}
+               <div className="absolute top-6 left-6 right-6 z-20 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                     <button onClick={() => router.history.back()} className="w-10 h-10 rounded-full bg-white border border-black/5 flex items-center justify-center hover:bg-zinc-50 transition-colors shadow-sm">
+                        <ChevronLeft size={20} className="text-zinc-400" />
+                     </button>
+                     <div className="bg-white px-4 py-2 rounded-2xl flex items-center gap-2 border border-black/5 shadow-sm">
+                        <div className="w-2 h-2 rounded-full bg-green-500" />
+                        <span className="text-[10px] font-bold text-zinc-900 uppercase tracking-widest">{id}</span>
                      </div>
-                  </motion.button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                     <button className="w-10 h-10 rounded-full bg-white border border-black/5 flex items-center justify-center hover:bg-zinc-50 transition-colors shadow-sm">
+                        <Volume2 size={18} className="text-zinc-400" />
+                     </button>
+                     <button className="w-10 h-10 rounded-full bg-white border border-black/5 flex items-center justify-center hover:bg-zinc-50 transition-colors shadow-sm">
+                        <Share2 size={18} className="text-zinc-400" />
+                     </button>
+                  </div>
+               </div>
 
-                  <motion.button
-                     initial={{ scale: 0 }}
-                     animate={{ scale: 1 }}
-                     transition={{ delay: 0.2 }}
-                     className="absolute top-1/2 right-1/3 z-30 w-8 h-8 rounded-full bg-zinc-950 border-4 border-white shadow-xl flex items-center justify-center group/hotspot"
-                  >
-                     <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-zinc-950 text-white px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/hotspot:opacity-100 transition-opacity">
-                        Technical Detail
+               {/* The Scene (Interactive Canvas/Image) */}
+               <div className="flex-1 relative overflow-hidden group p-8">
+                  <div className="w-full h-full rounded-[40px] bg-white border border-black/5 shadow-2xl shadow-black/5 flex items-center justify-center relative overflow-hidden">
+                     {/* This would be the AI generated scene */}
+                     <Sparkles size={80} className="text-zinc-100 animate-pulse" />
+
+                     {/* Hotspots (Interactive points) */}
+                     <motion.button
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="absolute top-1/3 left-1/4 z-30 w-8 h-8 rounded-full bg-zinc-950 border-4 border-white shadow-xl flex items-center justify-center group/hotspot"
+                     >
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-zinc-950 text-white px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/hotspot:opacity-100 transition-opacity">
+                           Historical Origin
+                        </div>
+                     </motion.button>
+
+                     <motion.button
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.2 }}
+                        className="absolute top-1/2 right-1/3 z-30 w-8 h-8 rounded-full bg-zinc-950 border-4 border-white shadow-xl flex items-center justify-center group/hotspot"
+                     >
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-zinc-950 text-white px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/hotspot:opacity-100 transition-opacity">
+                           Technical Detail
+                        </div>
+                     </motion.button>
+                  </div>
+               </div>
+
+               {/* Scene HUD/Labels */}
+               <div className="h-24 bg-white border-t border-black/5 p-6 flex items-center gap-8 overflow-x-auto">
+                  <div className="flex items-center gap-3 shrink-0">
+                     <div className="w-10 h-10 rounded-xl bg-zinc-50 border border-black/5 flex items-center justify-center">
+                        <Target className="text-zinc-900" size={18} />
                      </div>
-                  </motion.button>
-               </div>
-            </div>
-
-            {/* Scene HUD/Labels */}
-            <div className="h-24 bg-white border-t border-black/5 p-6 flex items-center gap-8 overflow-x-auto">
-               <div className="flex items-center gap-3 shrink-0">
-                  <div className="w-10 h-10 rounded-xl bg-zinc-50 border border-black/5 flex items-center justify-center">
-                     <Target className="text-zinc-900" size={18} />
+                     <div className="text-xs">
+                        <p className="font-bold text-zinc-400 uppercase tracking-widest mb-1 text-[9px]">Session Goal</p>
+                        <p className="font-bold text-zinc-900">Understand artistic perspective</p>
+                     </div>
                   </div>
-                  <div className="text-xs">
-                     <p className="font-bold text-zinc-400 uppercase tracking-widest mb-1 text-[9px]">Session Goal</p>
-                     <p className="font-bold text-zinc-900">Understand artistic perspective</p>
-                  </div>
-               </div>
-               <div className="w-px h-8 bg-zinc-100 shrink-0" />
-               <div className="flex items-center gap-3 shrink-0">
-                  <div className="w-10 h-10 rounded-xl bg-zinc-50 border border-black/5 flex items-center justify-center">
-                     <Zap className="text-zinc-900" size={18} />
-                  </div>
-                  <div className="text-xs">
-                     <p className="font-bold text-zinc-400 uppercase tracking-widest mb-1 text-[9px]">Experience</p>
-                     <p className="font-bold text-zinc-900">750 XP / 1000</p>
+                  <div className="w-px h-8 bg-zinc-100 shrink-0" />
+                  <div className="flex items-center gap-3 shrink-0">
+                     <div className="w-10 h-10 rounded-xl bg-zinc-50 border border-black/5 flex items-center justify-center">
+                        <Zap className="text-zinc-900" size={18} />
+                     </div>
+                     <div className="text-xs">
+                        <p className="font-bold text-zinc-400 uppercase tracking-widest mb-1 text-[9px]">Experience</p>
+                        <p className="font-bold text-zinc-900">750 XP / 1000</p>
+                     </div>
                   </div>
                </div>
             </div>
-         </div>
+         )}
 
          {/* Interaction Panel */}
-         <div className="w-full lg:w-[400px] bg-white border-l border-black/5 flex flex-col">
+         <div className={`${showScene ? 'w-full lg:w-[400px]' : 'max-w-4xl mx-auto w-full'} bg-white ${showScene ? 'border-l border-black/5' : ''} flex flex-col h-full`}>
             <div className="p-6 border-b border-black/5 flex items-center justify-between">
                <h3 className="font-bold flex items-center gap-2 text-zinc-900">
                   <Info size={18} className="text-zinc-400" />
@@ -155,47 +337,50 @@ function LearnPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-               {messages.map((m, i) => (
-                  <div key={i} className={`flex flex-col mb-6 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                     <div className={`max-w-[85%] py-3 px-4 rounded-[24px] text-sm leading-7 shadow-sm ${m.role === 'user'
-                        ? 'bg-zinc-900 text-white rounded-tr-sm shadow-zinc-900/10'
-                        : 'bg-white border border-black/5 text-zinc-600 rounded-tl-sm shadow-black/5 overflow-hidden'
-                        }`}>
-                        {m.role === 'user' ? (
-                           m.text
-                        ) : (
-                           <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                 h1: ({ node, ...props }: any) => <h1 className="text-xl font-display font-bold text-zinc-900 mt-6 mb-3 first:mt-0" {...props} />,
-                                 h2: ({ node, ...props }: any) => <h2 className="text-lg font-display font-bold text-zinc-900 mt-5 mb-2 first:mt-0" {...props} />,
-                                 h3: ({ node, ...props }: any) => <h3 className="text-base font-bold text-zinc-900 mt-4 mb-2" {...props} />,
-                                 p: ({ node, ...props }: any) => <p className="mb-4 last:mb-0 leading-relaxed text-zinc-600" {...props} />,
-                                 ul: ({ node, ...props }: any) => <ul className="space-y-2 mb-4 ml-1" {...props} />,
-                                 ol: ({ node, ...props }: any) => <ol className="space-y-2 mb-4 list-decimal list-inside" {...props} />,
-                                 li: ({ node, ...props }: any) => (
-                                    <li className="flex gap-2">
-                                       <span className="mt-2.5 w-1.5 h-1.5 rounded-full bg-zinc-300 shrink-0" />
-                                       <span className="flex-1 text-zinc-600">{props.children}</span>
-                                    </li>
-                                 ),
-                                 strong: ({ node, ...props }: any) => <strong className="font-bold text-zinc-900" {...props} />,
-                                 em: ({ node, ...props }: any) => <em className="italic text-zinc-500" {...props} />,
-                                 blockquote: ({ node, ...props }: any) => <blockquote className="border-l-4 border-zinc-200 pl-4 py-1 my-4 italic text-zinc-500 bg-zinc-50 rounded-r-lg" {...props} />,
-                                 hr: ({ node, ...props }: any) => <hr className="my-6 border-zinc-100" {...props} />,
-                                 code: ({ node, ...props }: any) => <code className="bg-zinc-100 text-pink-600 px-1.5 py-0.5 rounded text-xs font-mono font-bold" {...props} />
-                              }}
-                           >
-                              {m.text}
-                           </ReactMarkdown>
-                        )}
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6">
+               {messages.map((m, i) => {
+                  if (m.text === "") return null;
+                  return (
+                     <div key={i} className={`flex flex-col mb-6 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                        <div className={`max-w-[85%] py-3 px-4 rounded-[24px] text-sm leading-7 shadow-sm ${m.role === 'user'
+                           ? 'bg-zinc-900 text-white rounded-tr-sm shadow-zinc-900/10'
+                           : 'bg-white border border-black/5 text-zinc-600 rounded-tl-sm shadow-black/5 overflow-hidden'
+                           }`}>
+                           {m.role === 'user' ? (
+                              m.text
+                           ) : (
+                              <ReactMarkdown
+                                 remarkPlugins={[remarkGfm]}
+                                 components={{
+                                    h1: ({ node, ...props }: any) => <h1 className="text-xl font-display font-bold text-zinc-900 mt-6 mb-3 first:mt-0" {...props} />,
+                                    h2: ({ node, ...props }: any) => <h2 className="text-lg font-display font-bold text-zinc-900 mt-5 mb-2 first:mt-0" {...props} />,
+                                    h3: ({ node, ...props }: any) => <h3 className="text-base font-bold text-zinc-900 mt-4 mb-2" {...props} />,
+                                    p: ({ node, ...props }: any) => <p className="mb-4 last:mb-0 leading-relaxed text-zinc-600" {...props} />,
+                                    ul: ({ node, ...props }: any) => <ul className="space-y-2 mb-4 ml-1" {...props} />,
+                                    ol: ({ node, ...props }: any) => <ol className="space-y-2 mb-4 list-decimal list-inside" {...props} />,
+                                    li: ({ node, ...props }: any) => (
+                                       <li className="flex gap-2">
+                                          <span className="mt-2.5 w-1.5 h-1.5 rounded-full bg-zinc-300 shrink-0" />
+                                          <span className="flex-1 text-zinc-600">{props.children}</span>
+                                       </li>
+                                    ),
+                                    strong: ({ node, ...props }: any) => <strong className="font-bold text-zinc-900" {...props} />,
+                                    em: ({ node, ...props }: any) => <em className="italic text-zinc-500" {...props} />,
+                                    blockquote: ({ node, ...props }: any) => <blockquote className="border-l-4 border-zinc-200 pl-4 py-1 my-4 italic text-zinc-500 bg-zinc-50 rounded-r-lg" {...props} />,
+                                    hr: ({ node, ...props }: any) => <hr className="my-6 border-zinc-100" {...props} />,
+                                    code: ({ node, ...props }: any) => <code className="bg-zinc-100 text-pink-600 px-1.5 py-0.5 rounded text-xs font-mono font-bold" {...props} />
+                                 }}
+                              >
+                                 {m.text}
+                              </ReactMarkdown>
+                           )}
+                        </div>
+                        <span className="text-[10px] font-bold text-zinc-300 mt-2 px-1 uppercase tracking-wider">
+                           {m.role === 'user' ? 'You' : 'LensLearn Agent'}
+                        </span>
                      </div>
-                     <span className="text-[10px] font-bold text-zinc-300 mt-2 px-1 uppercase tracking-wider">
-                        {m.role === 'user' ? 'You' : 'LensLearn Agent'}
-                     </span>
-                  </div>
-               ))}
+                  )
+               })}
                {isLoading && (
                   <div className="flex flex-col items-start">
                      <div className="bg-white border border-black/5 p-3 rounded-2xl rounded-tl-sm shadow-sm opacity-80">
@@ -203,6 +388,7 @@ function LearnPage() {
                      </div>
                   </div>
                )}
+               <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
@@ -239,6 +425,6 @@ function LearnPage() {
             onClose={() => setShowUpgradeModal(false)}
             onUpgradeSuccess={() => toast.success("You're now a Pro learner!")}
          />
-      </div >
+      </div>
    )
 }

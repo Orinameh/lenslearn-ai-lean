@@ -81,7 +81,7 @@ function UploadPage() {
         const base64 = (reader.result as string).split(',')[1]
         await analyzeSceneFn({ data: { base64, mimeType: file.type } })
         toast.success("Scene generated successfully!")
-        navigate({ to: '/learn/$id', params: { id: media.id } })
+        navigate({ to: '/learn/$id', params: { id: media.id }, search: { type: 'image' } })
       }
     } catch (error: any) {
       console.error("Upload or Analysis failed", error)

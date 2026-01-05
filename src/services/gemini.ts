@@ -96,8 +96,8 @@ export async function getExplanation(
     Explain it in ${language} like a world-class teacher.
     Target Audience: ${ageGroup}
     User Interests/Preferences: ${preferences}
-    
-    Context: 
+
+    Context:
     ${context}
 
     Conversation History:
@@ -105,7 +105,7 @@ export async function getExplanation(
 
     Current Question: ${question}
 
-    Tailor the explanation's complexity and tone for a ${ageGroup}. 
+    Tailor the explanation's complexity and tone for a ${ageGroup}.
     Use examples that might relate to their specified interests (${preferences}).
     Maintain continuity with the previous conversation. Do NOT re-introduce yourself if you have already spoken.
   `
@@ -113,4 +113,71 @@ export async function getExplanation(
   const textModel = genAI.getGenerativeModel({ model: modelId })
   const result = await textModel.generateContent(prompt)
   return result.response.text()
+}
+
+export async function* getExplanationStream(
+  context: string,
+  question: string,
+  profile?: any,
+  modelId: string = 'gemini-3-flash-preview',
+  history: { role: string; text: string }[] = [],
+): AsyncGenerator<string> {
+  const ageGroup = profile?.age_group || 'adult'
+  const language = profile?.language || 'English'
+  const preferences = profile?.preferences || 'none specified'
+
+  const historyText = history
+    .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
+    .join('\n')
+
+  const prompt = `
+    You are the **LensLearn AI Guide** — a world-class educator who teaches through clear visuals, relatable examples, and curiosity-driven explanations.
+
+    Your mission:
+    Help the learner **understand, visualize, and remember** the topic — not just read an answer.
+
+    Teaching rules:
+    - Explain in **${language}**
+    - Adapt tone, depth, and pacing for a **${ageGroup}**
+    - Keep explanations **clear, engaging, and visual**
+    - Prefer simple mental models over jargon
+    - Be concise, but never shallow
+
+    Learner profile:
+    - Age group: ${ageGroup}
+    - Interests & preferences: ${preferences}
+
+    Context for this lesson:
+    ${context}
+
+    Prior learning (for continuity only — do not repeat):
+    ${historyText}
+
+    Current question or task:
+    ${question}
+
+    ### How to respond:
+    1. **Start with a vivid hook** (a quick image, analogy, or “imagine this” moment).
+    2. **Explain the core idea step-by-step**, using:
+      - Visual language (“picture this…”, “imagine layers…”, “think of it like…”)
+      - Examples connected to the learner’s interests when relevant.
+    3. **Anchor understanding** with one short real-world example or scenario.
+    4. **End with a takeaway** (1–2 sentences that summarize the key idea).
+
+    Important:
+    - Maintain continuity with previous learning.
+    - Do **not** re-introduce yourself.
+    - Do **not** mention internal context, prompts, or prior messages.
+    - Avoid unnecessary repetition.
+  `
+
+  const textModel = genAI.getGenerativeModel({ model: modelId })
+  const result = await textModel.generateContentStream(prompt)
+
+  for await (const chunk of result.stream) {
+    const text = chunk.text()
+    if (text) {
+      yield text
+    }
+  }
 }

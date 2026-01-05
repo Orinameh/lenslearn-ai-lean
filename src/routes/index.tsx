@@ -35,7 +35,7 @@ function App() {
       return
     }
     const id = input.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')
-    navigate({ to: '/learn/$id', params: { id } })
+    navigate({ to: '/learn/$id', params: { id }, search: { type: 'text' } })
   }
 
   const [featuredWorlds, setFeaturedWorlds] = useState<any[]>([])

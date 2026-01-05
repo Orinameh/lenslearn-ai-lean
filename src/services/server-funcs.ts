@@ -110,3 +110,99 @@ export const getExplanationFn = createServerFn({ method: 'POST' })
 
     return result
   })
+
+export const getExplanationStreamFn = createServerFn({ method: 'POST' })
+  .inputValidator(
+    (d: {
+      context: string
+      question: string
+      history?: { role: string; text: string }[]
+    }) => d,
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { user, supabase } = await requireUser()
+      const serverClient = getSupabaseServerClient()
+      const governance = new AIGovernanceService(serverClient)
+
+      // 1. Governance Routing
+      let decision
+      try {
+        decision = await governance.routeRequest(user.id, 'text')
+      } catch (error: any) {
+        throw new Error(error.message)
+      }
+
+      if (!decision.canProceed) {
+        if (decision.tier === 'black') {
+          return new Response(
+            'You have reached your learning limit for this month.',
+            { status: 429 },
+          )
+        }
+        return new Response('PAYMENT_REQUIRED', { status: 402 })
+      }
+
+      // Fetch profile for personalization
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
+
+      // 2. Create streaming response
+      const { getExplanationStream } = await import('../services/gemini')
+
+      const encoder = new TextEncoder()
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            let fullText = ''
+            for await (const chunk of getExplanationStream(
+              data.context,
+              data.question,
+              profile,
+              decision.model,
+              data.history || [],
+            )) {
+              fullText += chunk
+              controller.enqueue(encoder.encode(chunk))
+            }
+
+            // 3. Audit after streaming completes
+            const tokensIn = (data.context.length + data.question.length) / 4
+            const tokensOut = fullText.length / 4
+            await governance.auditTransaction(
+              user.id,
+              'text',
+              tokensIn,
+              tokensOut,
+            )
+
+            controller.close()
+          } catch (error) {
+            controller.error(error)
+          }
+        },
+      })
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Transfer-Encoding': 'chunked',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        },
+      })
+    } catch (error: any) {
+      console.error(error)
+      return new Response(
+        JSON.stringify({ error: error.message || 'Internal Server Error' }),
+        {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      )
+    }
+  })
