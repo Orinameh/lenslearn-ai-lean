@@ -22,7 +22,7 @@ function App() {
   const { user } = useAuthStore()
 
   const quickActions = [
-    { label: 'Explore Science', icon: Atom, color: 'text-blue-500', action: () => navigate({ to: '/explore' }) },
+    { label: 'Explore Worlds', icon: Atom, color: 'text-blue-500', action: () => navigate({ to: '/explore' }) },
     { label: 'Upload Image', icon: Plus, color: 'text-zinc-900', action: () => navigate({ to: '/upload' }) },
     { label: 'History Tour', icon: History, color: 'text-orange-500', action: () => setInput('Take me on a tour of Ancient Rome') },
     { label: 'Art Analysis', icon: Palette, color: 'text-purple-500', action: () => setInput('Analyze the composition of The Starry Night') },
@@ -86,13 +86,10 @@ function App() {
                     handleSubmit()
                   }
                 }}
-                placeholder="Assign a task or explore your curiosity"
+                placeholder="Ask a question or explore your curiosity"
                 className="flex-1 bg-transparent border-none outline-none resize-none pt-0.5 text-zinc-900 text-[17px] leading-relaxed placeholder:text-zinc-300 min-h-[48px] max-h-[200px]"
               />
               <div className="flex items-center gap-3">
-                <div className="w-6 h-6 rounded-md bg-zinc-100 flex items-center justify-center">
-                  <span className="text-[10px] font-bold text-zinc-400">G</span>
-                </div>
                 <button
                   onClick={handleSubmit}
                   className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 hover:bg-zinc-950 hover:text-white transition-all"

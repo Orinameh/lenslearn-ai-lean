@@ -12,15 +12,18 @@ import {
   History
 } from 'lucide-react'
 import { analyzeSceneFn } from '../services/server-funcs'
-import { getCloudinarySignatureFn, uploadMediaFn } from '../services/media-funcs'
 import { UpgradeModal } from '../components/UpgradeModal'
-
 import { authGuard } from '../services/authMiddleware'
+import { uploadImageToSupabaseFn } from '@/services/media-funcs'
 
 export const Route = createFileRoute('/upload')({
   beforeLoad: authGuard,
   component: UploadPage,
 })
+
+// File validation constants
+const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+const MAX_FILE_SIZE = 1024 * 1024 // 1MB in bytes
 
 function UploadPage() {
   const navigate = useNavigate()
@@ -30,11 +33,30 @@ function UploadPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
 
-  const handleFile = (f: File) => {
-    if (f.type.startsWith('image/')) {
-      setFile(f)
-      setPreview(URL.createObjectURL(f))
+  const validateFile = (f: File): string | null => {
+    // Check file type
+    if (!ALLOWED_TYPES.includes(f.type)) {
+      return 'Only PNG, JPEG, JPG, and WebP images are allowed'
     }
+
+    // Check file size
+    if (f.size > MAX_FILE_SIZE) {
+      return 'File size must be less than 1MB'
+    }
+
+    return null
+  }
+
+  const handleFile = (f: File) => {
+    const error = validateFile(f)
+
+    if (error) {
+      toast.error(error)
+      return
+    }
+
+    setFile(f)
+    setPreview(URL.createObjectURL(f))
   }
 
   const handleAnalyze = async () => {
@@ -42,55 +64,56 @@ function UploadPage() {
     setIsAnalyzing(true)
 
     try {
-      // 1. Get Signed Signature from Server
-      const signData = await getCloudinarySignatureFn()
-
-      // 2. Upload to Cloudinary directly from Client
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('api_key', signData.apiKey!)
-      formData.append('timestamp', signData.timestamp.toString())
-      formData.append('signature', signData.signature)
-      formData.append('folder', signData.folder)
-
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${signData.cloudName}/image/upload`,
-        {
-          method: 'POST',
-          body: formData,
-        }
-      )
-
-      if (!response.ok) throw new Error('Cloudinary upload failed')
-      const cloudinaryResult = await response.json()
-      const storageUrl = cloudinaryResult.secure_url
-
-      // 3. Save Metadata to Supabase
-      const media = await uploadMediaFn({
-        data: {
-          type: 'image',
-          storage_url: storageUrl,
-          is_watermarked: false
-        }
-      })
-
-      // 4. Analyze Scene (using base64 for Gemini as before, but now we have the URL stored)
+      // Convert file to base64 for analysis
       const reader = new FileReader()
       reader.readAsDataURL(file)
+
       reader.onload = async () => {
-        const base64 = (reader.result as string).split(',')[1]
-        await analyzeSceneFn({ data: { base64, mimeType: file.type } })
-        toast.success("Scene generated successfully!")
-        navigate({ to: '/learn/$id', params: { id: media.id }, search: { type: 'image' } })
+        try {
+          const base64 = (reader.result as string).split(',')[1]
+
+          // Upload to Supabase Storage and save metadata
+          await uploadImageToSupabaseFn({
+            data: {
+              fileName: file.name,
+              fileType: file.type,
+              fileData: base64,
+            }
+          })
+
+          // Analyze the scene
+          await analyzeSceneFn({
+            data: {
+              base64,
+              mimeType: file.type
+            }
+          })
+
+          toast.success("Scene generated successfully!")
+          navigate({
+            to: '/learn/$id',
+            params: { id: file.name },
+            search: { type: 'image' }
+          })
+        } catch (error: any) {
+          console.error("Analysis failed", error)
+          if (error.message?.includes('PAYMENT_REQUIRED')) {
+            setShowUpgradeModal(true)
+          } else {
+            toast.error(error.message || "Failed to process image")
+          }
+        } finally {
+          setIsAnalyzing(false)
+        }
+      }
+
+      reader.onerror = () => {
+        toast.error("Failed to read file")
+        setIsAnalyzing(false)
       }
     } catch (error: any) {
-      console.error("Upload or Analysis failed", error)
-      if (error.message?.includes('PAYMENT_REQUIRED')) {
-        setShowUpgradeModal(true)
-      } else {
-        toast.error(error.message || "Failed to process image")
-      }
-    } finally {
+      console.error("Upload failed", error)
+      toast.error(error.message || "Failed to upload image")
       setIsAnalyzing(false)
     }
   }
@@ -99,6 +122,10 @@ function UploadPage() {
     e.preventDefault()
     setIsDragging(false)
     if (e.dataTransfer.files?.[0]) handleFile(e.dataTransfer.files[0])
+  }
+
+  const formatFileSize = (bytes: number) => {
+    return `${(bytes / 1024).toFixed(0)}KB`
   }
 
   return (
@@ -123,10 +150,17 @@ function UploadPage() {
                 <UploadIcon size={32} className="text-zinc-400" />
               </div>
               <h3 className="text-lg font-bold text-zinc-900 mb-2 font-sans">Drag and drop an image</h3>
-              <p className="text-zinc-400 mb-8 max-w-xs text-sm">Supports JPG, PNG, and WebP. Max size 10MB.</p>
+              <p className="text-zinc-400 mb-8 max-w-xs text-sm">
+                Supports PNG, JPEG, JPG, and WebP. Max size 1MB.
+              </p>
               <label className="px-8 py-3 bg-zinc-950 text-white font-bold rounded-xl cursor-pointer hover:bg-zinc-800 transition-colors shadow-lg shadow-black/10">
                 Browse Files
-                <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".png,.jpg,.jpeg,.webp"
+                  onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+                />
               </label>
             </motion.div>
           ) : (
@@ -137,6 +171,15 @@ function UploadPage() {
             >
               <img src={preview} alt="Preview" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-black/10" />
+
+              {/* File info badge */}
+              {file && (
+                <div className="absolute top-6 left-6 bg-white/90 backdrop-blur-md px-3 py-2 rounded-lg shadow-sm">
+                  <p className="text-xs font-bold text-zinc-900">{file.name}</p>
+                  <p className="text-[10px] text-zinc-500">{formatFileSize(file.size)}</p>
+                </div>
+              )}
+
               <button
                 onClick={() => { setFile(null); setPreview(null) }}
                 className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/80 backdrop-blur-md flex items-center justify-center hover:bg-zinc-100 transition-colors shadow-sm"
@@ -200,8 +243,9 @@ function UploadPage() {
             </h3>
             <ul className="space-y-6">
               {[
+                { title: 'File Size', desc: 'Keep images under 1MB for optimal performance and faster processing.' },
                 { title: 'Contrast Matters', desc: 'Clear, high-contrast images yield the best interaction points.' },
-                { title: 'Subject Focus', desc: 'Try to center the primary learning object for better analysis.' }
+                { title: 'Subject Focus', desc: 'Center the primary learning object for better analysis.' }
               ].map((tip, i) => (
                 <li key={i}>
                   <p className="font-bold text-sm text-zinc-900 mb-1">{tip.title}</p>
@@ -217,8 +261,6 @@ function UploadPage() {
         isOpen={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
         onUpgradeSuccess={() => {
-          // Re-trigger analysis if they just paid? Or just let them click again.
-          // Letting them click again is safer/easier UX.
           toast.success("Ready to create! Click Generate Scene again.")
         }}
       />

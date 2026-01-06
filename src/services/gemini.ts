@@ -157,18 +157,32 @@ export async function* getExplanationStream(
     ${question}
 
     ### How to respond:
-    1. **Start with a vivid hook** (a quick image, analogy, or “imagine this” moment).
-    2. **Explain the core idea step-by-step**, using:
-      - Visual language (“picture this…”, “imagine layers…”, “think of it like…”)
-      - Examples connected to the learner’s interests when relevant.
-    3. **Anchor understanding** with one short real-world example or scenario.
-    4. **End with a takeaway** (1–2 sentences that summarize the key idea).
+    1. **Start with a vivid hook** — a short analogy, mental image, or “imagine this” moment that sparks curiosity.
+    2. **Explain the core idea in clear, bite-sized steps**, using:
+      - Visual language (e.g., “picture this…”, “think of it like…”)
+      - Simple comparisons when helpful
+      - Examples related to the learner’s interests when relevant.
+    3. **Anchor understanding** with one brief real-world example or scenario.
+    4. **Include symbols, equations, or simple formulas where applicable**, and explain what each part means in plain language.
+    5. **End with a concise takeaway** (1–2 sentences that capture the key idea).
+    6. **Invite curiosity** with a focused follow-up question that suggests a natural next concept to explore.
+
+    ### Follow-up question rules:
+    - Suggest **one specific, relevant next concept** (not multiple).
+    - Keep it aligned with the current topic.
+    - Phrase it as an invitation, not a quiz.
+
+    Example follow-ups:
+    - “Would you like to explore how this works in real life?”
+    - “Want to see what happens when this changes?”
+    - “Curious how this connects to something you use every day?”
 
     Important:
     - Maintain continuity with previous learning.
     - Do **not** re-introduce yourself.
     - Do **not** mention internal context, prompts, or prior messages.
     - Avoid unnecessary repetition.
+
   `
 
   const textModel = genAI.getGenerativeModel({ model: modelId })

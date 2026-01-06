@@ -1,9 +1,10 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import {
    Sparkles,
    Send,
@@ -15,10 +16,10 @@ import {
    Share2,
    Loader2
 } from 'lucide-react'
-import { getExplanationStreamFn } from '../services/server-funcs'
 import { UpgradeModal } from '../components/UpgradeModal'
 
 import { authGuard } from '../services/authMiddleware'
+import { useLearn } from 'utils/useLearn'
 
 export const Route = createFileRoute('/learn/$id')({
    beforeLoad: authGuard,
@@ -30,223 +31,29 @@ export const Route = createFileRoute('/learn/$id')({
    component: LearnPage,
 })
 
-export type Message = {
-   role: 'user' | 'assistant'
-   text: string
-}
+
 
 function LearnPage() {
    const { id } = Route.useParams()
    const search = Route.useSearch() as { type?: 'text' | 'image' }
    const loaderData = Route.useLoaderData()
    const router = useRouter()
-   const messagesEndRef = useRef<HTMLDivElement>(null)
-   const hasAutoSent = useRef(false)
 
-   // Determine if we should show the scene canvas
-   const showScene = search.type === 'image'
-
-   const [messages, setMessages] = useState<Message[]>([
-      {
-         role: 'assistant', text: showScene
-            ? "Welcome to this interactive world! I've analyzed the scene and identified 3 key learning hotspots for you to explore. Where would you like to start?"
-            : "Hello! I'm your LensLearn AI Guide. What would you like to learn about today?"
-      }
-   ])
-
-   // Add a ref to track the latest messages
-   const messagesRef = useRef(messages)
-
-   // Keep ref in sync with state
-   useEffect(() => {
-      messagesRef.current = messages
-   }, [messages])
-
-
-   const [input, setInput] = useState('')
-   const [isLoading, setIsLoading] = useState(false)
-   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
-   const messagesContainerRef = useRef<HTMLDivElement>(null)
-
-   // Auto-scroll to bottom when messages change, but only if user is already near bottom
-   const scrollToBottom = () => {
-      const container = messagesContainerRef.current
-      if (!container) return
-
-      // Check if user is near the bottom (within 100px)
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
-
-      // Only auto-scroll if user is already near bottom
-      if (isNearBottom) {
-         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-      }
-   }
-
-   useEffect(() => {
-      if (!messagesContainerRef.current) return
-      scrollToBottom()
-   }, [messages])
-
-   // In your LearnPage component
-   const sendMessage = async (userMessage: string) => {
-      setIsLoading(true)
-
-      // Use ref to get the latest messages (includes the user message)
-      const currentMessages = messagesRef.current
-
-      // Add placeholder assistant message
-      setMessages(prev => {
-         if (prev[prev.length - 1]?.role === 'assistant' && prev[prev.length - 1]?.text === '') {
-            return prev
-         }
-         return [...prev, { role: 'assistant', text: '' }]
-      })
-
-      try {
-         const response = await getExplanationStreamFn({
-            data: {
-               context: showScene
-                  ? "Global Context: Learning scene about " + id
-                  : "Global Context: Learning about " + id,
-               question: userMessage,
-               // Use the messages from ref (which includes user message)
-               history: currentMessages
-            }
-         })
-
-         if (!response.ok) {
-            if (response.status === 402) {
-               setShowUpgradeModal(true)
-               setMessages(prev => {
-                  const newMessages = [...prev]
-                  // Update the last message (assistant placeholder)
-                  newMessages[newMessages.length - 1] = {
-                     role: 'assistant',
-                     text: "You've reached your free limit. Please upgrade to continue learning."
-                  }
-                  return newMessages
-               })
-               setIsLoading(false)
-               return
-            }
-
-            const errorText = await response.text()
-            throw new Error(errorText || 'Failed to get response')
-         }
-
-         const reader = response.body?.getReader()
-         if (!reader) throw new Error('No reader available')
-
-         const decoder = new TextDecoder()
-         let accumulatedText = ''
-         let lastUpdateTime = Date.now()
-
-         try {
-            while (true) {
-               const { done, value } = await reader.read()
-
-               if (done) {
-                  break
-               }
-
-               const chunk = decoder.decode(value, { stream: true })
-               accumulatedText += chunk
-
-               const now = Date.now()
-               if (now - lastUpdateTime > 50 || done) {
-                  setMessages(prev => {
-                     const newMessages = [...prev]
-                     // Update last message (assistant)
-                     newMessages[newMessages.length - 1] = {
-                        role: 'assistant',
-                        text: accumulatedText
-                     }
-                     return newMessages
-                  })
-                  lastUpdateTime = now
-               }
-            }
-         } catch (readError: any) {
-            console.error('Stream reading error:', readError)
-
-            if (accumulatedText) {
-               setMessages(prev => {
-                  const newMessages = [...prev]
-                  newMessages[newMessages.length - 1] = {
-                     role: 'assistant',
-                     text: accumulatedText + '\n\n[Connection interrupted]'
-                  }
-                  return newMessages
-               })
-            } else {
-               throw readError
-            }
-         } finally {
-            try {
-               reader.releaseLock()
-            } catch { }
-         }
-
-      } catch (error: any) {
-         console.error('Send message error:', error)
-
-         setMessages(prev => {
-            const newMessages = [...prev]
-            // Update last message with error
-            newMessages[newMessages.length - 1] = {
-               role: 'assistant',
-               text: "There was an error connecting to the AI guide. Please try again."
-            }
-            return newMessages
-         })
-         toast.error('Failed to connect to AI guide')
-      } finally {
-         setIsLoading(false)
-      }
-   }
-
-   const handleSend = async () => {
-      if (!input.trim() || isLoading) return
-
-      const userMessage = input
-      setInput('')
-
-      // Add user message
-      setMessages(prev => {
-         const newMessage: Message = { role: 'user', text: userMessage }
-         const updated = [...prev, newMessage]
-         messagesRef.current = updated
-         return updated
-      })
-
-      // Call sendMessage - it will add the assistant placeholder
-      await sendMessage(userMessage)
-
-   }
-
-   // Auto-send initial prompt for text mode
-   useEffect(() => {
-      if (showScene) return
-      if (!loaderData.prompt) return
-      if (hasAutoSent.current) return
-
-      hasAutoSent.current = true
-
-      setMessages(prev => {
-         const newMessage: Message = { role: 'user', text: loaderData.prompt }
-         const updated = [...prev, newMessage]
-         messagesRef.current = updated
-         return updated
-      })
-
-      sendMessage(loaderData.prompt)
-   }, [showScene, loaderData.prompt])
-
-
+   const { messages,
+      input,
+      isLoading,
+      showUpgradeModal,
+      setShowUpgradeModal,
+      handleSend,
+      setInput,
+      messagesContainerRef,
+      messagesEndRef,
+      showScene, } = useLearn(search, id, loaderData,)
 
 
    return (
-      <div className={`flex flex-col ${showScene ? 'lg:flex-row' : ''} h-[calc(100vh-64px)] overflow-hidden bg-white`}>
+      // h-[calc(100vh-64px)]
+      <div className={`flex flex-col ${showScene ? 'lg:flex-row' : ''} overflow-hidden bg-white`}>
          {/* Visual Scene Area - Only show for image-based learning */}
          {showScene && (
             <div className="flex-1 relative bg-zinc-50 flex flex-col">
@@ -350,7 +157,8 @@ function LearnPage() {
                               m.text
                            ) : (
                               <ReactMarkdown
-                                 remarkPlugins={[remarkGfm]}
+                                 remarkPlugins={[remarkGfm, remarkMath]}
+                                 rehypePlugins={[rehypeKatex]}
                                  components={{
                                     h1: ({ node, ...props }: any) => <h1 className="text-xl font-display font-bold text-zinc-900 mt-6 mb-3 first:mt-0" {...props} />,
                                     h2: ({ node, ...props }: any) => <h2 className="text-lg font-display font-bold text-zinc-900 mt-5 mb-2 first:mt-0" {...props} />,
@@ -368,7 +176,14 @@ function LearnPage() {
                                     em: ({ node, ...props }: any) => <em className="italic text-zinc-500" {...props} />,
                                     blockquote: ({ node, ...props }: any) => <blockquote className="border-l-4 border-zinc-200 pl-4 py-1 my-4 italic text-zinc-500 bg-zinc-50 rounded-r-lg" {...props} />,
                                     hr: ({ node, ...props }: any) => <hr className="my-6 border-zinc-100" {...props} />,
-                                    code: ({ node, ...props }: any) => <code className="bg-zinc-100 text-pink-600 px-1.5 py-0.5 rounded text-xs font-mono font-bold" {...props} />
+                                    code: ({ node, inline, ...props }: any) => {
+                                       // Inline code (not math)
+                                       if (inline) {
+                                          return <code className="bg-zinc-100 text-pink-600 px-1.5 py-0.5 rounded text-xs font-mono font-bold" {...props} />
+                                       }
+                                       // Code blocks
+                                       return <code className="block bg-zinc-100 text-pink-600 p-3 rounded text-sm font-mono overflow-x-auto" {...props} />
+                                    }
                                  }}
                               >
                                  {m.text}

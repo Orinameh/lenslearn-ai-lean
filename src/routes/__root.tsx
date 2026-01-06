@@ -11,6 +11,8 @@ import { useAuthStore } from '../services/authStore'
 import appCss from '../styles.css?url'
 import { seo } from 'utils/seo'
 import { ErrorComponent } from '../components/ErrorComponent'
+import { NotFound } from '@/components/NotFound'
+import 'katex/dist/katex.min.css'
 
 export const Route = createRootRoute({
   errorComponent: ErrorComponent,
@@ -48,13 +50,7 @@ export const Route = createRootRoute({
   }),
 
   shellComponent: RootDocument,
-  notFoundComponent: () => (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-      <h1 className="text-4xl font-display">404 - Page Not Found</h1>
-      <p className="text-zinc-500">The page you're looking for doesn't exist.</p>
-      <a href="/" className="btn-primary">Go Home</a>
-    </div>
-  ),
+  notFoundComponent: NotFound,
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {

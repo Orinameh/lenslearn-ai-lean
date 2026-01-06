@@ -88,8 +88,8 @@ function ExplorePage() {
             key={cat.name}
             onClick={() => setSelectedCategory(cat.name)}
             className={`flex items-center gap-2 px-6 py-3 rounded-2xl border transition-all text-sm font-bold ${selectedCategory === cat.name
-                ? 'bg-zinc-900 border-zinc-900 text-white shadow-lg shadow-zinc-200'
-                : 'bg-zinc-50 border-black/5 text-zinc-600 hover:text-zinc-900 hover:border-black/10'
+              ? 'bg-zinc-900 border-zinc-900 text-white shadow-lg shadow-zinc-200'
+              : 'bg-zinc-50 border-black/5 text-zinc-600 hover:text-zinc-900 hover:border-black/10'
               }`}
           >
             <cat.icon size={16} />
