@@ -225,7 +225,7 @@ export async function* getExplanationStream(
       - Examples related to the learner’s interests when relevant.
     3. **Anchor understanding** with one brief real-world example or scenario.
     4. **Include symbols, equations, or simple formal representations only when they naturally improve understanding for the subject**, and explain what each part means in plain language.
-For non-quantitative topics, use clear conceptual models, structured logic, or frameworks instead of mathematical equations.
+      - For non-quantitative topics, use clear conceptual models, structured logic, or frameworks instead of mathematical equations.
     5. **End with a concise takeaway** (1–2 sentences that capture the key idea).
     6. **Invite curiosity** with a focused follow-up question that suggests a natural next concept to explore.
 

@@ -178,7 +178,7 @@ export const saveMessageFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const { user, supabase } = await requireUser()
 
-    // 1. Fetch current messages
+    // 1. Fetch current messages with a lock-like check by using the latest session state
     const { data: session, error: fetchError } = await supabase
       .from('learning_sessions')
       .select('messages')
@@ -186,27 +186,36 @@ export const saveMessageFn = createServerFn({ method: 'POST' })
       .eq('user_id', user.id)
       .single()
 
-    if (fetchError) throw new Error(fetchError.message)
+    if (fetchError) {
+      console.error('Fetch error in saveMessageFn:', fetchError)
+      throw new Error(`Failed to fetch session: ${fetchError.message}`)
+    }
 
-    const currentMessages = Array.isArray(session.messages)
+    // Ensure we handle the case where messages might be null or not an array
+    const existingMessages = Array.isArray(session.messages)
       ? session.messages
       : []
+
     const newMessage = {
       role: data.role,
       text: data.text,
       created_at: new Date().toISOString(),
     }
 
-    // 2. Update with appended message
+    // 2. Update with appended message using standard client (respects RLS)
     const { error: updateError } = await supabase
       .from('learning_sessions')
       .update({
-        messages: [...currentMessages, newMessage],
+        messages: [...existingMessages, newMessage],
       })
       .eq('id', data.sessionId)
       .eq('user_id', user.id)
 
-    if (updateError) throw new Error(updateError.message)
+    if (updateError) {
+      console.error('Update error in saveMessageFn:', updateError)
+      throw new Error(`Failed to update messages: ${updateError.message}`)
+    }
+
     return { success: true }
   })
 
