@@ -4,14 +4,16 @@ import { requireUser } from './auth-helper'
 import { getSupabaseServerClient } from './supabase-server'
 import { AIGovernanceService } from './ai-governance'
 
-export const analyzeSceneFn = createServerFn({ method: 'POST' })
-  .inputValidator((d: { base64: string; mimeType: string }) => d)
+export const processMediaAnalysisFn = createServerFn({ method: 'POST' })
+  .inputValidator(
+    (d: { base64: string; fileName: string; fileType: string }) => d,
+  )
   .handler(async ({ data }) => {
     const { user, supabase } = await requireUser()
     const serverClient = getSupabaseServerClient()
     const governance = new AIGovernanceService(serverClient)
 
-    // 1. Governance Routing
+    // 1. Governance & Routing
     let decision
     try {
       decision = await governance.routeRequest(user.id, 'image')
@@ -21,39 +23,87 @@ export const analyzeSceneFn = createServerFn({ method: 'POST' })
 
     if (!decision.canProceed) {
       if (decision.tier === 'black') {
-        throw new Error(
-          'Monthly plan limit reached. Please upgrade or wait for renewal.',
-        )
-      } else if (decision.tier === 'red') {
-        throw new Error(
-          'High-resolution generation temporarily paused due to heavy usage. Try text-only learning.',
-        )
+        throw new Error('Monthly plan limit reached.')
       }
       throw new Error('PAYMENT_REQUIRED')
     }
 
-    // Fetch profile for Gemini personalization
+    // Prepare for parallel execution
+    const timestamp = Date.now()
+    const sanitizedFileName = data.fileName.replace(/[^a-zA-Z0-9.-]/g, '_')
+    const uniqueFileName = `${user.id}/${timestamp}-${sanitizedFileName}`
+    const buffer = Buffer.from(data.base64, 'base64')
+
+    // 2. Fetch profile first (fast) to ensure AI personalization
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
       .eq('user_id', user.id)
       .single()
 
-    // 2. Execute AI Service
-    const buffer = Buffer.from(data.base64, 'base64')
-    // Pass model config to analyzeScene (need to update signature)
-    const result = await analyzeScene(
-      buffer,
-      data.mimeType,
-      profile,
-      decision.model,
-    )
+    // 3. Parallel Execution: Storage Upload + AI Analysis
+    // Overlapping these two long-running tasks for maximum performance
+    try {
+      const [uploadResult, analysisResult] = await Promise.all([
+        // Task A: Storage Upload
+        serverClient.storage
+          .from('media-uploads')
+          .upload(uniqueFileName, buffer, {
+            contentType: data.fileType,
+            upsert: false,
+          }),
 
-    // 3. Audit Cost (Async)
-    // We assume standard cost for image gen for now
-    await governance.auditTransaction(user.id, 'image')
+        // Task B: AI Scene Analysis (Personalized)
+        analyzeScene(buffer, data.fileType, profile, decision.model),
+      ])
 
-    return result
+      if (uploadResult.error) {
+        throw new Error(`Upload failed: ${uploadResult.error.message}`)
+      }
+
+      const {
+        data: { publicUrl },
+      } = serverClient.storage
+        .from('media-uploads')
+        .getPublicUrl(uniqueFileName)
+
+      // 4. Audit & Final DB Insert (Atomic)
+      await governance.auditTransaction(user.id, 'image')
+
+      const { data: mediaRecord, error: insertError } = await serverClient
+        .from('media')
+        .insert({
+          user_id: user.id,
+          type: 'image',
+          storage_url: publicUrl,
+          analysis_data: analysisResult,
+          is_watermarked: false,
+        })
+        .select('id')
+        .single()
+
+      if (insertError) {
+        // Cleanup storage on DB failure
+        await serverClient.storage
+          .from('media-uploads')
+          .remove([uniqueFileName])
+        throw new Error(`Failed to save media record: ${insertError.message}`)
+      }
+
+      return {
+        mediaId: mediaRecord.id,
+        analysis: analysisResult,
+      }
+    } catch (error: any) {
+      // General cleanup for parallel failures
+      console.error('[processMediaAnalysisFn] Fatal Error:', error)
+      // Attempt to clean up storage if it might have succeeded
+      await serverClient.storage
+        .from('media-uploads')
+        .remove([uniqueFileName])
+        .catch(() => {})
+      throw error
+    }
   })
 
 export const getExplanationFn = createServerFn({ method: 'POST' })
@@ -79,7 +129,6 @@ export const getExplanationFn = createServerFn({ method: 'POST' })
 
     if (!decision.canProceed) {
       if (decision.tier === 'black') {
-        // Fallback to "Cached" content simulation
         return 'You have reached your learning limit for this month. Please review your previous sessions.'
       }
       throw new Error('PAYMENT_REQUIRED')
@@ -93,7 +142,6 @@ export const getExplanationFn = createServerFn({ method: 'POST' })
       .single()
 
     // 2. Execute AI Service
-    // Pass model to getExplanation
     const result = await getExplanation(
       data.context,
       data.question,
@@ -103,7 +151,6 @@ export const getExplanationFn = createServerFn({ method: 'POST' })
     )
 
     // 3. Audit Cost (Async)
-    // Estimate tokens (simple)
     const tokensIn = (data.context.length + data.question.length) / 4
     const tokensOut = result.length / 4
     await governance.auditTransaction(user.id, 'text', tokensIn, tokensOut)
@@ -125,12 +172,15 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
       const serverClient = getSupabaseServerClient()
       const governance = new AIGovernanceService(serverClient)
 
-      // 1. Governance Routing
       let decision
       try {
         decision = await governance.routeRequest(user.id, 'text')
       } catch (error: any) {
-        throw new Error(error.message)
+        console.error('[Governance Error]:', error)
+        return new Response(
+          JSON.stringify({ error: 'Governance check failed' }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } },
+        )
       }
 
       if (!decision.canProceed) {
@@ -143,46 +193,86 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
         return new Response('PAYMENT_REQUIRED', { status: 402 })
       }
 
-      // Fetch profile for personalization
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', user.id)
         .single()
 
-      // 2. Create streaming response
       const { getExplanationStream } = await import('../services/gemini')
-
       const encoder = new TextEncoder()
+
+      let generator: AsyncGenerator<string, any, any>
+
+      try {
+        generator = getExplanationStream(
+          data.context,
+          data.question,
+          profile,
+          decision.model,
+          data.history || [],
+        )
+      } catch (initError: any) {
+        console.error('[Generator Init Error]:', initError)
+        const errorMessage = initError.message || JSON.stringify(initError)
+        const isRateLimit =
+          errorMessage.includes('429') || errorMessage.includes('QUOTA')
+        const status = isRateLimit ? 429 : 500
+        const body = isRateLimit
+          ? 'Usage limit exceeded.'
+          : 'Failed to start stream.'
+
+        return new Response(JSON.stringify({ error: body }), {
+          status,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
       const stream = new ReadableStream({
         async start(controller) {
           try {
             let fullText = ''
-            for await (const chunk of getExplanationStream(
-              data.context,
-              data.question,
-              profile,
-              decision.model,
-              data.history || [],
-            )) {
+            for await (const chunk of generator) {
               fullText += chunk
               controller.enqueue(encoder.encode(chunk))
             }
-
-            // 3. Audit after streaming completes
-            const tokensIn = (data.context.length + data.question.length) / 4
-            const tokensOut = fullText.length / 4
-            await governance.auditTransaction(
-              user.id,
-              'text',
-              tokensIn,
-              tokensOut,
-            )
-
+            try {
+              const tokensIn = (data.context.length + data.question.length) / 4
+              const tokensOut = fullText.length / 4
+              await governance.auditTransaction(
+                user.id,
+                'text',
+                tokensIn,
+                tokensOut,
+              )
+            } catch (auditError) {
+              console.error('[Audit Error]:', auditError)
+            }
             controller.close()
-          } catch (error) {
-            controller.error(error)
+          } catch (streamError: any) {
+            const errorMessage =
+              streamError.message || JSON.stringify(streamError)
+            const isRateLimit =
+              streamError.status === 429 ||
+              errorMessage.includes('429') ||
+              errorMessage.includes('QUOTA') ||
+              errorMessage.includes('Too Many Requests')
+
+            try {
+              const errorMsg = isRateLimit
+                ? '\n\nRate limit exceeded. Please wait a moment.'
+                : '\n\nAn error occurred while generating the response.'
+              controller.enqueue(encoder.encode(errorMsg))
+            } catch (e) {
+            } finally {
+              try {
+                controller.close()
+              } catch (e) {}
+            }
           }
+        },
+        cancel(reason) {
+          console.log('[Stream Cancelled]:', reason)
         },
       })
 
@@ -196,13 +286,10 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
         },
       })
     } catch (error: any) {
-      console.error(error)
-      return new Response(
-        JSON.stringify({ error: error.message || 'Internal Server Error' }),
-        {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      )
+      console.error('[Handler Fatal Error]:', error)
+      return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
   })

@@ -101,6 +101,8 @@ export class AIGovernanceService {
       }
     }
 
+    console.log({ state })
+
     // Model Selection Matrix
     let selectedModel = 'gemini-3-flash-preview' // Default High
     let imageRes = '1024x1024'

@@ -10,7 +10,7 @@ import {
 import { motion } from 'framer-motion'
 import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '../services/authStore'
-import { exploreWorldsFn } from '../services/learning-funcs'
+import { exploreWorldsFn, getUserSessionsFn } from '../services/learning-funcs'
 
 export const Route = createFileRoute('/')({
   component: App,
@@ -39,13 +39,20 @@ function App() {
   }
 
   const [featuredWorlds, setFeaturedWorlds] = useState<any[]>([])
+  const [recentSessions, setRecentSessions] = useState<any[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     exploreWorldsFn({ data: undefined }).then(worlds => {
       setFeaturedWorlds(worlds)
     })
-  }, [])
+
+    if (user) {
+      getUserSessionsFn({ data: { limit: 6 } }).then(sessions => {
+        setRecentSessions(sessions || [])
+      }).catch(err => console.error("Failed to fetch sessions:", err))
+    }
+  }, [user])
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -116,6 +123,64 @@ function App() {
           </div>
         </motion.div>
       </section>
+
+      {/* Recent Learning Section */}
+      {user && recentSessions.length > 0 && (
+        <section className="w-full max-w-6xl px-6 mb-20">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-sm font-bold text-zinc-950 uppercase tracking-widest flex items-center gap-2">
+              <History size={16} className="text-orange-500" />
+              Recent Learning
+            </h3>
+            <Link to="/history" className="text-xs font-bold text-zinc-400 hover:text-zinc-900 flex items-center gap-1 transition-colors">
+              VIEW ALL <ArrowRight size={12} />
+            </Link>
+          </div>
+
+          <div className="flex gap-4 overflow-x-auto pb-4 -mx-6 px-6 no-scrollbar">
+            {recentSessions.map((session, i) => (
+              <motion.div
+                key={session.id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.1 }}
+                onClick={() => navigate({
+                  to: '/learn/$id',
+                  params: { id: session.media_id || session.world || 'session' },
+                  search: {
+                    type: session.media_id ? 'image' : 'text',
+                    session: session.id
+                  }
+                })}
+                className="shrink-0 w-72 p-1 rounded-[24px] bg-zinc-50 border border-black/[0.03] hover:border-black/10 hover:bg-white hover:shadow-xl hover:shadow-black/[0.02] transition-all cursor-pointer group"
+              >
+                <div className="p-5 flex flex-col h-full">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-white shadow-sm border border-black/5 flex items-center justify-center">
+                      {session.media_id ? (
+                        <Palette size={18} className="text-purple-500" />
+                      ) : (
+                        <Atom size={18} className="text-blue-500" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 truncate">
+                        {session.media_id ? 'AI Analysis' : 'Guided Exploration'}
+                      </p>
+                      <p className="text-[10px] text-zinc-300 font-bold">
+                        {new Date(session.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <h4 className="text-sm font-bold text-zinc-900 group-hover:text-black line-clamp-1">
+                    {session.title || 'Untitled Session'}
+                  </h4>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Grid Section */}
       <section className="w-full max-w-6xl px-6 pb-32">

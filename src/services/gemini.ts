@@ -49,8 +49,26 @@ export async function analyzeScene(
     detailed educational explanation, and estimated (x,y) percentage coordinates (0-100).
     All text must be in ${language}.
     Also suggest a primary learning goal for the session.
-    Return the response in valid JSON format matching the SceneAnalysis interface.
+    Also suggest a primary learning goal for the session.
+    
+    IMPORTANT: You must return ONLY valid JSON that matches this structure EXACTLY:
+    {
+      "title": "string",
+      "description": "string",
+      "suggestedGoal": "string",
+      "hotspots": [
+        {
+          "id": "unique-id",
+          "label": "short label",
+          "description": "detailed explanation",
+          "x": number (0-100),
+          "y": number (0-100)
+        }
+      ]
+    }
   `
+
+  console.log({ modelId })
 
   /* Use dynamic model */
   const visionModel = genAI.getGenerativeModel({ model: modelId })
@@ -68,12 +86,55 @@ export async function analyzeScene(
   const response = result.response
   const text = response.text()
 
-  // Basic JSON extraction (should be more robust in production)
-  const jsonStart = text.indexOf('{')
-  const jsonEnd = text.lastIndexOf('}') + 1
-  const jsonStr = text.slice(jsonStart, jsonEnd)
+  try {
+    // Robust JSON extraction
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      throw new Error('No JSON object found in response')
+    }
+    const jsonStr = jsonMatch[0]
+    const rawResult = JSON.parse(jsonStr)
+    return normalizeAnalysis(rawResult)
+  } catch (error) {
+    console.error('[analyzeScene] JSON Parsing failed:', error)
+    console.error('[analyzeScene] Raw text was:', text)
+    throw new Error('Failed to parse scene analysis from AI')
+  }
+}
 
-  return JSON.parse(jsonStr) as SceneAnalysis
+/**
+ * Normalizes the AI response to handle common key variations
+ */
+function normalizeAnalysis(raw: any): SceneAnalysis {
+  const result: SceneAnalysis = {
+    title: raw.title || 'Interactive Scene',
+    description: raw.description || '',
+    suggestedGoal: raw.suggestedGoal || raw.learningGoal || raw.goal || '',
+    hotspots: [],
+  }
+
+  if (Array.isArray(raw.hotspots)) {
+    result.hotspots = raw.hotspots.map((h: any, i: number) => {
+      let x = h.x
+      let y = h.y
+
+      // Handle "coordinates": [x, y]
+      if (Array.isArray(h.coordinates) && h.coordinates.length === 2) {
+        x = h.coordinates[0]
+        y = h.coordinates[1]
+      }
+
+      return {
+        id: h.id || `hotspot-${i}`,
+        label: h.label || 'Point of Interest',
+        description: h.description || h.explanation || h.details || '',
+        x: typeof x === 'number' ? x : 50,
+        y: typeof y === 'number' ? y : 50,
+      }
+    })
+  }
+
+  return result
 }
 
 export async function getExplanation(
@@ -163,7 +224,8 @@ export async function* getExplanationStream(
       - Simple comparisons when helpful
       - Examples related to the learner’s interests when relevant.
     3. **Anchor understanding** with one brief real-world example or scenario.
-    4. **Include symbols, equations, or simple formulas where applicable**, and explain what each part means in plain language.
+    4. **Include symbols, equations, or simple formal representations only when they naturally improve understanding for the subject**, and explain what each part means in plain language.
+For non-quantitative topics, use clear conceptual models, structured logic, or frameworks instead of mathematical equations.
     5. **End with a concise takeaway** (1–2 sentences that capture the key idea).
     6. **Invite curiosity** with a focused follow-up question that suggests a natural next concept to explore.
 
@@ -188,10 +250,21 @@ export async function* getExplanationStream(
   const textModel = genAI.getGenerativeModel({ model: modelId })
   const result = await textModel.generateContentStream(prompt)
 
-  for await (const chunk of result.stream) {
-    const text = chunk.text()
-    if (text) {
-      yield text
+  try {
+    for await (const chunk of result.stream) {
+      try {
+        const text = chunk.text()
+        if (text) {
+          yield text
+        }
+      } catch (chunkError) {
+        console.error('[Gemini Chunk Error]:', chunkError)
+        // If it's a safety filter error, we might still want to continue or yield a specific message
+        continue
+      }
     }
+  } catch (streamError) {
+    console.error('[Gemini Stream Error]:', streamError)
+    throw streamError
   }
 }

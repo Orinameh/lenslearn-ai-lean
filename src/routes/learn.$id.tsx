@@ -9,7 +9,7 @@ import {
    Sparkles,
    Send,
    Info,
-   Target,
+   Target as TargetIcon,
    Zap,
    Volume2,
    ChevronLeft,
@@ -20,13 +20,40 @@ import { UpgradeModal } from '../components/UpgradeModal'
 
 import { authGuard } from '../services/authMiddleware'
 import { useLearn } from 'utils/useLearn'
+import { getMediaFn } from '@/services/media-funcs'
+import { getLearningSessionFn } from '@/services/learning-funcs'
 
 export const Route = createFileRoute('/learn/$id')({
    beforeLoad: authGuard,
-   loader: ({ params }) => {
+   loader: async ({ params, location }) => {
+      const search = location.search as { type?: 'text' | 'image'; session?: string }
+
+      let mediaData = null
+      let sessionData = null
+
+      if (search.session) {
+         try {
+            sessionData = await getLearningSessionFn({ data: { id: search.session } })
+            // If it's an image session, we might need to override the ID from the session's media_id
+            if (sessionData.media_id) {
+               mediaData = await getMediaFn({ data: { id: sessionData.media_id } })
+            }
+         } catch (e) {
+            console.error("Failed to fetch session data:", e)
+         }
+      }
+
+      if (search.type === 'image' && !mediaData) {
+         try {
+            mediaData = await getMediaFn({ data: { id: params.id } })
+         } catch (e) {
+            console.error("Failed to fetch media data:", e)
+         }
+      }
+
       // Convert kebab-case ID back to readable prompt
       const prompt = params.id.replace(/-/g, ' ')
-      return { prompt }
+      return { prompt, mediaData, sessionData }
    },
    component: LearnPage,
 })
@@ -35,7 +62,7 @@ export const Route = createFileRoute('/learn/$id')({
 
 function LearnPage() {
    const { id } = Route.useParams()
-   const search = Route.useSearch() as { type?: 'text' | 'image' }
+   const search = Route.useSearch() as { type?: 'text' | 'image'; session?: string }
    const loaderData = Route.useLoaderData()
    const router = useRouter()
 
@@ -53,10 +80,10 @@ function LearnPage() {
 
    return (
       // h-[calc(100vh-64px)]
-      <div className={`flex flex-col ${showScene ? 'lg:flex-row' : ''} overflow-hidden bg-white`}>
+      <div className={`flex flex-col ${showScene ? 'lg:flex-row' : ''} overflow-hidden bg-white h-[calc(100vh-64px)]`}>
          {/* Visual Scene Area - Only show for image-based learning */}
          {showScene && (
-            <div className="flex-1 relative bg-zinc-50 flex flex-col">
+            <div className="flex-1 relative bg-zinc-50 flex flex-col h-full overflow-hidden">
                {/* Scene Header */}
                <div className="absolute top-6 left-6 right-6 z-20 flex items-center justify-between">
                   <div className="flex items-center gap-4">
@@ -81,30 +108,87 @@ function LearnPage() {
                {/* The Scene (Interactive Canvas/Image) */}
                <div className="flex-1 relative overflow-hidden group p-8">
                   <div className="w-full h-full rounded-[40px] bg-white border border-black/5 shadow-2xl shadow-black/5 flex items-center justify-center relative overflow-hidden">
-                     {/* This would be the AI generated scene */}
-                     <Sparkles size={80} className="text-zinc-100 animate-pulse" />
+                     {/* Render the actual analyzed image */}
+                     {loaderData.mediaData?.storage_url ? (
+                        <div className="absolute inset-0 w-full h-full">
+                           <img
+                              src={loaderData.mediaData.storage_url}
+                              alt="Learning Scene"
+                              className="w-full h-full object-cover transition-scale duration-700 group-hover:scale-105"
+                           />
+                           <div className="absolute inset-0 bg-black/5 transition-opacity group-hover:opacity-0" />
+                        </div>
+                     ) : (
+                        <Sparkles size={80} className="text-zinc-100 animate-pulse" />
+                     )}
 
                      {/* Hotspots (Interactive points) */}
-                     <motion.button
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="absolute top-1/3 left-1/4 z-30 w-8 h-8 rounded-full bg-zinc-950 border-4 border-white shadow-xl flex items-center justify-center group/hotspot"
-                     >
-                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-zinc-950 text-white px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/hotspot:opacity-100 transition-opacity">
-                           Historical Origin
-                        </div>
-                     </motion.button>
+                     {loaderData.mediaData?.analysis_data?.hotspots?.map((hotspot: any, idx: number) => (
+                        <motion.button
+                           key={hotspot.id || idx}
+                           initial={{ scale: 0, opacity: 0 }}
+                           animate={{ scale: 1, opacity: 1 }}
+                           transition={{ delay: idx * 0.1 }}
+                           style={{
+                              left: `${hotspot.x}%`,
+                              top: `${hotspot.y}%`,
+                              transform: 'translate(-50%, -50%)'
+                           }}
+                           onClick={() => setInput(`Tell me more about ${hotspot.label}: ${hotspot.description}`)}
+                           className="absolute z-30 w-8 h-8 rounded-full bg-zinc-950 border-4 border-white shadow-xl flex items-center justify-center group/hotspot hover:scale-125 transition-transform"
+                        >
+                           <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-zinc-950 text-white px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/hotspot:opacity-100 transition-opacity pointer-events-none">
+                              {hotspot.label}
+                           </div>
+                           <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                        </motion.button>
+                     ))}
 
-                     <motion.button
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: 0.2 }}
-                        className="absolute top-1/2 right-1/3 z-30 w-8 h-8 rounded-full bg-zinc-950 border-4 border-white shadow-xl flex items-center justify-center group/hotspot"
-                     >
-                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-zinc-950 text-white px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/hotspot:opacity-100 transition-opacity">
-                           Technical Detail
+                     {!loaderData.mediaData?.analysis_data?.hotspots && !isLoading && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-50">
+                           <div className="text-center p-8 max-w-sm">
+                              {loaderData.mediaData ? (
+                                 <>
+                                    <div className="w-16 h-16 bg-zinc-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-black/5">
+                                       <Loader2 className="animate-spin text-zinc-400" size={24} />
+                                    </div>
+                                    <p className="font-bold text-zinc-900">Preparing Interactive Scene...</p>
+                                    <p className="text-xs text-zinc-500 mt-2 leading-relaxed">
+                                       We're mapping hotspots and educational points. This usually takes a few seconds. If it stays like this, the 'analysis_data' column might be missing in your 'media' table.
+                                    </p>
+                                    <div className="mt-6 flex flex-col gap-2">
+                                       <button
+                                          onClick={() => window.location.reload()}
+                                          className="text-[10px] font-bold uppercase tracking-widest text-zinc-900 border border-black/5 px-4 py-2 rounded-xl bg-white hover:bg-zinc-50 transition-colors shadow-sm"
+                                       >
+                                          Refresh Page
+                                       </button>
+                                       <button
+                                          onClick={() => router.navigate({ to: '/upload' })}
+                                          className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-zinc-900 transition-colors"
+                                       >
+                                          Back to Upload
+                                       </button>
+                                    </div>
+                                 </>
+                              ) : (
+                                 <>
+                                    <Info className="text-zinc-400 mb-4 mx-auto" size={32} />
+                                    <p className="font-bold text-zinc-900">Scene Data Missing</p>
+                                    <p className="text-xs text-zinc-500 mt-2">
+                                       We couldn't find the data for this learning session.
+                                    </p>
+                                    <button
+                                       onClick={() => router.navigate({ to: '/upload' })}
+                                       className="mt-6 text-[10px] font-bold uppercase tracking-widest text-zinc-900 border border-black/5 px-4 py-2 rounded-xl bg-white hover:bg-zinc-50 transition-colors shadow-sm"
+                                    >
+                                       New Upload
+                                    </button>
+                                 </>
+                              )}
+                           </div>
                         </div>
-                     </motion.button>
+                     )}
                   </div>
                </div>
 
@@ -112,11 +196,13 @@ function LearnPage() {
                <div className="h-24 bg-white border-t border-black/5 p-6 flex items-center gap-8 overflow-x-auto">
                   <div className="flex items-center gap-3 shrink-0">
                      <div className="w-10 h-10 rounded-xl bg-zinc-50 border border-black/5 flex items-center justify-center">
-                        <Target className="text-zinc-900" size={18} />
+                        <TargetIcon className="text-zinc-900" size={18} />
                      </div>
                      <div className="text-xs">
                         <p className="font-bold text-zinc-400 uppercase tracking-widest mb-1 text-[9px]">Session Goal</p>
-                        <p className="font-bold text-zinc-900">Understand artistic perspective</p>
+                        <p className="font-bold text-zinc-900 text-wrap">
+                           {loaderData.mediaData?.analysis_data?.suggestedGoal || "Understand artistic perspective"}
+                        </p>
                      </div>
                   </div>
                   <div className="w-px h-8 bg-zinc-100 shrink-0" />
@@ -134,7 +220,7 @@ function LearnPage() {
          )}
 
          {/* Interaction Panel */}
-         <div className={`${showScene ? 'w-full lg:w-[400px]' : 'max-w-4xl mx-auto w-full'} bg-white ${showScene ? 'border-l border-black/5' : ''} flex flex-col h-full`}>
+         <div className={`${showScene ? 'w-full lg:w-[400px]' : 'max-w-4xl mx-auto w-full'} bg-white ${showScene ? 'border-l border-black/5' : ''} flex flex-col flex-1 min-h-0`}>
             <div className="p-6 border-b border-black/5 flex items-center justify-between">
                <h3 className="font-bold flex items-center gap-2 text-zinc-900">
                   <Info size={18} className="text-zinc-400" />
@@ -144,7 +230,7 @@ function LearnPage() {
             </div>
 
             {/* Messages */}
-            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
                {messages.map((m, i) => {
                   if (m.text === "") return null;
                   return (

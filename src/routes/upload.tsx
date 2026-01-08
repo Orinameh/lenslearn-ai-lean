@@ -11,10 +11,9 @@ import {
   Loader2,
   History
 } from 'lucide-react'
-import { analyzeSceneFn } from '../services/server-funcs'
+import { processMediaAnalysisFn } from '../services/server-funcs'
 import { UpgradeModal } from '../components/UpgradeModal'
 import { authGuard } from '../services/authMiddleware'
-import { uploadImageToSupabaseFn } from '@/services/media-funcs'
 
 export const Route = createFileRoute('/upload')({
   beforeLoad: authGuard,
@@ -23,7 +22,7 @@ export const Route = createFileRoute('/upload')({
 
 // File validation constants
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
-const MAX_FILE_SIZE = 1024 * 1024 // 1MB in bytes
+const MAX_FILE_SIZE = 500 * 1024 // 500KB in bytes
 
 function UploadPage() {
   const navigate = useNavigate()
@@ -41,7 +40,7 @@ function UploadPage() {
 
     // Check file size
     if (f.size > MAX_FILE_SIZE) {
-      return 'File size must be less than 1MB'
+      return 'File size must be less than 500KB'
     }
 
     return null
@@ -72,27 +71,19 @@ function UploadPage() {
         try {
           const base64 = (reader.result as string).split(',')[1]
 
-          // Upload to Supabase Storage and save metadata
-          await uploadImageToSupabaseFn({
+          // Single atomic call for upload, analysis, and DB record creation
+          const { mediaId } = await processMediaAnalysisFn({
             data: {
               fileName: file.name,
               fileType: file.type,
-              fileData: base64,
-            }
-          })
-
-          // Analyze the scene
-          await analyzeSceneFn({
-            data: {
-              base64,
-              mimeType: file.type
+              base64: base64,
             }
           })
 
           toast.success("Scene generated successfully!")
           navigate({
             to: '/learn/$id',
-            params: { id: file.name },
+            params: { id: mediaId },
             search: { type: 'image' }
           })
         } catch (error: any) {
