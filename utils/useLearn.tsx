@@ -65,19 +65,23 @@ export const useLearn = (
     const [showUpgradeModal, setShowUpgradeModal] = useState(false)
     const messagesContainerRef = useRef<HTMLDivElement>(null)
 
-    // Improved auto-scroll function
+    // Improved auto-scroll function to use window scroll
     const scrollToBottom = (force = false) => {
         if (force || isStreamingRef.current) {
-            // Always scroll during streaming or when forced
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+            // Always scroll window during streaming or when forced
+            window.scrollTo({
+                top: document.documentElement.scrollHeight,
+                behavior: 'smooth'
+            })
         } else {
-            // Otherwise check if user is near bottom
-            const container = messagesContainerRef.current
-            if (!container) return
-
-            const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150
-            if (isNearBottom) {
-                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+            // Otherwise check if user is near bottom of window
+            const scrollPos = window.innerHeight + window.scrollY
+            const threshold = document.documentElement.scrollHeight - 150
+            if (scrollPos > threshold) {
+                window.scrollTo({
+                    top: document.documentElement.scrollHeight,
+                    behavior: 'smooth'
+                })
             }
         }
     }
