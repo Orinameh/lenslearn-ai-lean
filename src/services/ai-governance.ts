@@ -101,17 +101,16 @@ export class AIGovernanceService {
       }
     }
 
-    console.log({ state })
-
     // Model Selection Matrix
-    let selectedModel = 'gemini-3-flash-preview' // Default High
+    let selectedModel =
+      process.env.GEMINI_MAIN_MODEL || 'gemini-3-flash-preview' // Default High
     let imageRes = '1024x1024'
 
     if (state === 'yellow') {
-      selectedModel = 'gemini-2.5-flash'
+      selectedModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash'
       imageRes = '512x512' // Optimization
     } else if (state === 'red') {
-      selectedModel = 'gemini-2.5-flash' // Lowest cost
+      selectedModel = process.env.GEMINI_REDZONE_MODEL || 'gemini-2.5-flash' // Lowest cost
       if (requestType === 'image') {
         // Disable image gen in red state to save budget
         return { canProceed: false, model: 'none', tier: 'red' }
@@ -132,6 +131,8 @@ export class AIGovernanceService {
     type: 'text' | 'image',
     tokensIn?: number,
     tokensOut?: number,
+    isSafetyBlock: boolean = false,
+    context?: string,
   ) {
     let cost = 0
     if (type === 'image') {
@@ -165,5 +166,25 @@ export class AIGovernanceService {
         last_request_at: new Date().toISOString(),
       })
       .eq('user_id', userId)
+
+    if (isSafetyBlock) {
+      console.warn(`[Governance] Safety block recorded for user ${userId}`)
+      // Insert into safety_incidents table
+      const { error: incidentError } = await this.serverClient
+        .from('safety_incidents')
+        .insert({
+          user_id: userId,
+          type: type,
+          blocked_content: context,
+          created_at: new Date().toISOString(),
+        })
+
+      if (incidentError) {
+        console.error(
+          '[Governance] Failed to record safety incident:',
+          incidentError,
+        )
+      }
+    }
   }
 }

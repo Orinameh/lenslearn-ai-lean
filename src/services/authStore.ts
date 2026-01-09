@@ -24,6 +24,3 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user: null, session: null })
   },
 }))
-
-// Note: We don't initialize here anymore as it prevents SSR hydration issues
-// Instead we initialize in the root route or a provider

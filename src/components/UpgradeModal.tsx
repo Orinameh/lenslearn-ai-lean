@@ -106,7 +106,7 @@ export function UpgradeModal({ isOpen, onClose, onUpgradeSuccess }: UpgradeModal
                                     </li>
                                     <li className="flex items-start gap-3 text-sm text-zinc-900">
                                         <Check size={18} className="text-green-500 shrink-0" />
-                                        <span>Advanced Flash 2.0 Model</span>
+                                        <span>Advanced AI Models</span>
                                     </li>
                                     <li className="flex items-start gap-3 text-sm text-zinc-900">
                                         <Check size={18} className="text-green-500 shrink-0" />

@@ -75,7 +75,8 @@ function LearnPage() {
       setInput,
       messagesContainerRef,
       messagesEndRef,
-      showScene, } = useLearn(search, id, loaderData,)
+      showScene,
+      modelId, } = useLearn(search, id, loaderData,)
 
 
    return (
@@ -227,7 +228,7 @@ function LearnPage() {
                   <Info size={18} className="text-zinc-400" />
                   AI Learning Guide
                </h3>
-               <span className="text-[10px] font-bold bg-zinc-50 px-2 py-1 rounded border border-black/5 uppercase tracking-widest text-zinc-500">Flash 2.0</span>
+               <span className="text-[10px] font-bold bg-zinc-50 px-2 py-1 rounded border border-black/5 uppercase tracking-widest text-zinc-500">{modelId}</span>
             </div>
 
             {/* Messages Area - No internal scroll, uses window scroll */}
@@ -236,9 +237,9 @@ function LearnPage() {
                   if (m.text === "") return null;
                   return (
                      <div key={i} className={`flex flex-col mb-6 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                        <div className={`max-w-[85%] py-3 px-4 rounded-[24px] text-sm leading-7 shadow-sm ${m.role === 'user'
-                           ? 'bg-zinc-900 text-white rounded-tr-sm shadow-zinc-900/10'
-                           : 'bg-white border border-black/5 text-zinc-600 rounded-tl-sm shadow-black/5 overflow-hidden'
+                        <div className={` py-3 px-4 rounded-[24px] text-sm leading-7 shadow-sm ${m.role === 'user'
+                           ? 'bg-zinc-900 text-white rounded-tr-sm shadow-zinc-900/10 max-w-[50%]'
+                           : 'bg-white border border-black/5 text-zinc-600 rounded-tl-sm shadow-black/5 overflow-hidden max-w-[85%]'
                            }`}>
                            {m.role === 'user' ? (
                               m.text

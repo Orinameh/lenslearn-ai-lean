@@ -57,6 +57,7 @@ export const useLearn = (
 
     const [input, setInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
+    const [modelId, setModelId] = useState<string>(import.meta.env.VITE_GEMINI_MAIN_MODEL)
     const [showUpgradeModal, setShowUpgradeModal] = useState(false)
     const messagesContainerRef = useRef<HTMLDivElement>(null)
 
@@ -171,6 +172,12 @@ export const useLearn = (
 
                 const errorText = await response.text()
                 throw new Error(errorText || 'Failed to get response')
+            }
+
+            // Capture the model ID from header
+            const responseModelId = response.headers.get('X-Model-ID')
+            if (responseModelId) {
+                setModelId(responseModelId)
             }
 
             const reader = response.body?.getReader()
@@ -310,6 +317,7 @@ export const useLearn = (
         messagesContainerRef,
         messagesEndRef,
         showScene,
+        modelId,
     }
 
 }

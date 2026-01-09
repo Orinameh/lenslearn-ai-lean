@@ -1,14 +1,50 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import {
+  GoogleGenerativeAI,
+  HarmCategory,
+  HarmBlockThreshold,
+} from '@google/generative-ai'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
-export const geminiModel = genAI.getGenerativeModel({
-  model: 'gemini-3-flash-preview', // Using Flash for low latency and cost
-})
+/**
+ * Dynamic safety settings based on age group.
+ * Stricter for kids and teens.
+ */
+function getSafetySettings(ageGroup: string) {
+  const threshold =
+    ageGroup === 'kid' || ageGroup === 'teen'
+      ? HarmBlockThreshold.BLOCK_LOW_AND_ABOVE
+      : HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
 
-export const geminiVisionModel = genAI.getGenerativeModel({
-  model: 'gemini-3-flash-preview', // Multimodal by default
-})
+  return [
+    {
+      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+      threshold: threshold,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+      threshold: threshold,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+      threshold: threshold,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+      threshold: threshold,
+    },
+  ]
+}
+
+const REINFORCED_SAFETY_PREAMBLE = `
+### HIGH-PRIORITY SAFETY & RESPONSIBILITY MANDATE
+- **Forbidden Topics**: Do NOT discuss, assist with, or provide instructions for: weapons, explosives, illegal drugs, self-harm, violence, sexual content, or any dangerous activities.
+- **No Professional Advice**: Do NOT provide medical diagnoses, legal advice, or financial planning.
+- **Refusal Protocol**: If the user asks about a forbidden topic, decline firmly but politely, explaining that it falls outside your educational mission. 
+- **Age Appropriateness**: You are a mentor for a {ageGroup}. Every word, example, and analogy MUST be curated for their maturity level.
+`
+
+// Note: We create models on-the-fly inside functions to use dynamic safety settings
 
 export interface SceneAnalysis {
   title: string
@@ -27,13 +63,15 @@ export async function analyzeScene(
   imageBuffer: Buffer,
   mimeType: string,
   profile?: any,
-  modelId: string = 'gemini-3-flash-preview',
+  modelId: string = process.env.GEMINI_MAIN_MODEL || 'gemini-3-flash-preview',
 ): Promise<SceneAnalysis> {
   const ageGroup = profile?.age_group || 'adult'
   const language = profile?.language || 'English'
   const preferences = profile?.preferences || 'none specified'
 
   const prompt = `
+    ${REINFORCED_SAFETY_PREAMBLE.replace('{ageGroup}', ageGroup)}
+
     Analyze this image and turn it into an interactive learning scene.
     Target Audience: ${ageGroup}
     Preferred Language: ${language}
@@ -49,7 +87,12 @@ export async function analyzeScene(
     detailed educational explanation, and estimated (x,y) percentage coordinates (0-100).
     All text must be in ${language}.
     Also suggest a primary learning goal for the session.
-    Also suggest a primary learning goal for the session.
+
+    ### Safety & Responsibility:
+    - Ensure all identified hotspots and descriptions are safe and appropriate for a ${ageGroup}.
+    - Do not identify or describe sensitive, harmful, or illegal content.
+    - Focus strictly on educational and curious aspects of the image.
+    - If the image contains harmful or inappropriate content, return an error-like JSON with a "description" explaining that the content is not suitable for learning.
     
     IMPORTANT: You must return ONLY valid JSON that matches this structure EXACTLY:
     {
@@ -68,10 +111,11 @@ export async function analyzeScene(
     }
   `
 
-  console.log({ modelId })
-
-  /* Use dynamic model */
-  const visionModel = genAI.getGenerativeModel({ model: modelId })
+  /* Use dynamic model and safety settings */
+  const visionModel = genAI.getGenerativeModel({
+    model: modelId,
+    safetySettings: getSafetySettings(ageGroup),
+  })
 
   const result = await visionModel.generateContent([
     prompt,
@@ -141,7 +185,7 @@ export async function getExplanation(
   context: string,
   question: string,
   profile?: any,
-  modelId: string = 'gemini-3-flash-preview',
+  modelId: string = process.env.GEMINI_MAIN_MODEL || 'gemini-3-flash-preview',
   history: { role: string; text: string }[] = [],
 ): Promise<string> {
   const ageGroup = profile?.age_group || 'adult'
@@ -153,6 +197,8 @@ export async function getExplanation(
     .join('\n')
 
   const prompt = `
+    ${REINFORCED_SAFETY_PREAMBLE.replace('{ageGroup}', ageGroup)}
+
     You are the LensLearn AI Guide. Your goal is to provide concise, engaging, and highly visual explanations.
     Explain it in ${language} like a world-class teacher.
     Target Audience: ${ageGroup}
@@ -169,9 +215,19 @@ export async function getExplanation(
     Tailor the explanation's complexity and tone for a ${ageGroup}.
     Use examples that might relate to their specified interests (${preferences}).
     Maintain continuity with the previous conversation. Do NOT re-introduce yourself if you have already spoken.
+
+    ### Teaching Guidelines & Safety Boundaries:
+    - **Accuracy First**: Prioritize factual correctness. If you are unsure of a fact, state it clearly or guide the user toward consensus views.
+    - **Safe & Appropriate**: Ensure all content is strictly appropriate for a ${ageGroup}.
+    - **Forbidden Topics**: Do NOT provide medical, legal, financial, or professional advice. Always refer the user to a qualified professional for these matters.
+    - **No Harm**: Never assist with illegal activities, self-harm, violence, or any dangerous behavior.
+    - **Encourage Curiosity**: Use a growth-mindset approach. Help the user learn how to think, not just what to think.
   `
 
-  const textModel = genAI.getGenerativeModel({ model: modelId })
+  const textModel = genAI.getGenerativeModel({
+    model: modelId,
+    safetySettings: getSafetySettings(ageGroup),
+  })
   const result = await textModel.generateContent(prompt)
   return result.response.text()
 }
@@ -180,7 +236,7 @@ export async function* getExplanationStream(
   context: string,
   question: string,
   profile?: any,
-  modelId: string = 'gemini-3-flash-preview',
+  modelId: string = process.env.GEMINI_MAIN_MODEL || 'gemini-3-flash-preview',
   history: { role: string; text: string }[] = [],
 ): AsyncGenerator<string> {
   const ageGroup = profile?.age_group || 'adult'
@@ -192,6 +248,8 @@ export async function* getExplanationStream(
     .join('\n')
 
   const prompt = `
+    ${REINFORCED_SAFETY_PREAMBLE.replace('{ageGroup}', ageGroup)}
+
     You are the **LensLearn AI Guide** — a world-class educator who teaches through clear visuals, relatable examples, and curiosity-driven explanations.
 
     Your mission:
@@ -239,6 +297,13 @@ export async function* getExplanationStream(
     - “Want to see what happens when this changes?”
     - “Curious how this connects to something you use every day?”
 
+    ### Teaching Guidelines & Safety Boundaries:
+    - **Safety First**: Strictly avoid harmful, illegal, or dangerous content.
+    - **Boundaries**: Do NOT provide medical, legal, or financial advice. Refer to professionals.
+    - **Factuality**: Be truthful. If unsure, admit it. Correct misconceptions gently.
+    - **Age-Appropriate**: Ensure every word and example is curated for a **${ageGroup}**.
+    - **Professional Educator**: Maintain a warm, encouraging, yet professional distance. No personal opinions on sensitive politics or religion.
+
     Important:
     - Maintain continuity with previous learning.
     - Do **not** re-introduce yourself.
@@ -247,7 +312,10 @@ export async function* getExplanationStream(
 
   `
 
-  const textModel = genAI.getGenerativeModel({ model: modelId })
+  const textModel = genAI.getGenerativeModel({
+    model: modelId,
+    safetySettings: getSafetySettings(ageGroup),
+  })
   const result = await textModel.generateContentStream(prompt)
 
   try {

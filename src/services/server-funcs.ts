@@ -93,6 +93,7 @@ export const processMediaAnalysisFn = createServerFn({ method: 'POST' })
       return {
         mediaId: mediaRecord.id,
         analysis: analysisResult,
+        model: decision.model,
       }
     } catch (error: any) {
       // General cleanup for parallel failures
@@ -142,20 +143,45 @@ export const getExplanationFn = createServerFn({ method: 'POST' })
       .single()
 
     // 2. Execute AI Service
-    const result = await getExplanation(
-      data.context,
-      data.question,
-      profile,
-      decision.model,
-      data.history || [],
-    )
+    let result = ''
+    let isSafetyBlock = false
+    try {
+      result = await getExplanation(
+        data.context,
+        data.question,
+        profile,
+        decision.model,
+        data.history || [],
+      )
+    } catch (error: any) {
+      if (
+        error.message?.includes('SAFETY') ||
+        error.message?.includes('blocked')
+      ) {
+        isSafetyBlock = true
+        result =
+          "I'm sorry, I cannot provide an explanation for this request as it falls outside our safety guidelines for educational content."
+      } else {
+        throw error
+      }
+    }
 
     // 3. Audit Cost (Async)
     const tokensIn = (data.context.length + data.question.length) / 4
     const tokensOut = result.length / 4
-    await governance.auditTransaction(user.id, 'text', tokensIn, tokensOut)
+    await governance.auditTransaction(
+      user.id,
+      'text',
+      tokensIn,
+      tokensOut,
+      isSafetyBlock,
+      data.question,
+    )
 
-    return result
+    return {
+      result,
+      model: decision.model,
+    }
   })
 
 export const getExplanationStreamFn = createServerFn({ method: 'POST' })
@@ -244,6 +270,8 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
                 'text',
                 tokensIn,
                 tokensOut,
+                false,
+                data.question,
               )
             } catch (auditError) {
               console.error('[Audit Error]:', auditError)
@@ -252,6 +280,9 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
           } catch (streamError: any) {
             const errorMessage =
               streamError.message || JSON.stringify(streamError)
+            const isSafetyBlock =
+              errorMessage.includes('SAFETY') ||
+              errorMessage.includes('blocked')
             const isRateLimit =
               streamError.status === 429 ||
               errorMessage.includes('429') ||
@@ -259,9 +290,25 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
               errorMessage.includes('Too Many Requests')
 
             try {
-              const errorMsg = isRateLimit
-                ? '\n\nRate limit exceeded. Please wait a moment.'
-                : '\n\nAn error occurred while generating the response.'
+              let errorMsg =
+                '\n\nAn error occurred while generating the response.'
+              if (isRateLimit) {
+                errorMsg = '\n\nRate limit exceeded. Please wait a moment.'
+              } else if (isSafetyBlock) {
+                errorMsg =
+                  '\n\n[Content blocked for safety/responsibility guidelines]'
+                // Audit safety block if we have the user context
+                try {
+                  await governance.auditTransaction(
+                    user.id,
+                    'text',
+                    0,
+                    0,
+                    true,
+                    data.question,
+                  )
+                } catch {}
+              }
               controller.enqueue(encoder.encode(errorMsg))
             } catch (e) {
             } finally {
@@ -283,6 +330,7 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
           'X-Accel-Buffering': 'no',
+          'X-Model-ID': decision.model,
         },
       })
     } catch (error: any) {
