@@ -6,7 +6,12 @@ import { AIGovernanceService } from './ai-governance'
 
 export const processMediaAnalysisFn = createServerFn({ method: 'POST' })
   .inputValidator(
-    (d: { base64: string; fileName: string; fileType: string }) => d,
+    (d: {
+      base64: string
+      fileName: string
+      fileType: string
+      initialPrompt?: string
+    }) => d,
   )
   .handler(async ({ data }) => {
     const { user, supabase } = await requireUser()
@@ -54,7 +59,13 @@ export const processMediaAnalysisFn = createServerFn({ method: 'POST' })
           }),
 
         // Task B: AI Scene Analysis (Personalized)
-        analyzeScene(buffer, data.fileType, profile, decision.model),
+        analyzeScene(
+          buffer,
+          data.fileType,
+          profile,
+          decision.model,
+          data.initialPrompt,
+        ),
       ])
 
       if (uploadResult.error) {

@@ -167,6 +167,8 @@ export class AIGovernanceService {
       })
       .eq('user_id', userId)
 
+    console.log({ isSafetyBlock })
+
     if (isSafetyBlock) {
       console.warn(`[Governance] Safety block recorded for user ${userId}`)
       // Insert into safety_incidents table

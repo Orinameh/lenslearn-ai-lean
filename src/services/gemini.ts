@@ -64,10 +64,33 @@ export async function analyzeScene(
   mimeType: string,
   profile?: any,
   modelId: string = process.env.GEMINI_MAIN_MODEL || 'gemini-3-flash-preview',
+  initialPrompt?: string,
 ): Promise<SceneAnalysis> {
   const ageGroup = profile?.age_group || 'adult'
   const language = profile?.language || 'English'
-  const preferences = profile?.preferences || 'none specified'
+  const rawPrefs = profile?.preferences || {}
+
+  // Format preferences into a readable string
+  let preferences = 'none specified'
+  if (typeof rawPrefs === 'string') {
+    preferences = rawPrefs
+  } else if (typeof rawPrefs === 'object' && rawPrefs !== null) {
+    const parts = []
+    if (rawPrefs.learning_style)
+      parts.push(`Learning Style: ${rawPrefs.learning_style}`)
+    // Add other known preferences here
+
+    if (parts.length > 0) {
+      preferences = parts.join(', ')
+    } else if (Object.keys(rawPrefs).length > 0) {
+      // Fallback for unknown structure strings
+      try {
+        preferences = JSON.stringify(rawPrefs)
+      } catch {
+        preferences = 'Custom preferences'
+      }
+    }
+  }
 
   const prompt = `
     ${REINFORCED_SAFETY_PREAMBLE.replace('{ageGroup}', ageGroup)}
@@ -76,6 +99,7 @@ export async function analyzeScene(
     Target Audience: ${ageGroup}
     Preferred Language: ${language}
     User Interests/Preferences: ${preferences}
+    ${initialPrompt ? `\nSPECIAL USER CONTEXT/QUESTION: "${initialPrompt}"\n(Please prioritize addressing this context or answering this question in your analysis and hotspots.)\n` : ''}
 
     Adapt the language complexity, tone, and focus based on the target audience:
     - If kid: Use very simple, fun, and conversational language. Focus on basic concepts.
@@ -190,7 +214,29 @@ export async function getExplanation(
 ): Promise<string> {
   const ageGroup = profile?.age_group || 'adult'
   const language = profile?.language || 'English'
-  const preferences = profile?.preferences || 'none specified'
+  const rawPrefs = profile?.preferences || {}
+
+  // Format preferences into a readable string
+  let preferences = 'none specified'
+  if (typeof rawPrefs === 'string') {
+    preferences = rawPrefs
+  } else if (typeof rawPrefs === 'object' && rawPrefs !== null) {
+    const parts = []
+    if (rawPrefs.learning_style)
+      parts.push(`Learning Style: ${rawPrefs.learning_style}`)
+    // Add other known preferences here
+
+    if (parts.length > 0) {
+      preferences = parts.join(', ')
+    } else if (Object.keys(rawPrefs).length > 0) {
+      // Fallback for unknown structure strings
+      try {
+        preferences = JSON.stringify(rawPrefs)
+      } catch {
+        preferences = 'Custom preferences'
+      }
+    }
+  }
 
   const historyText = history
     .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
@@ -241,7 +287,29 @@ export async function* getExplanationStream(
 ): AsyncGenerator<string> {
   const ageGroup = profile?.age_group || 'adult'
   const language = profile?.language || 'English'
-  const preferences = profile?.preferences || 'none specified'
+  const rawPrefs = profile?.preferences || {}
+
+  // Format preferences into a readable string
+  let preferences = 'none specified'
+  if (typeof rawPrefs === 'string') {
+    preferences = rawPrefs
+  } else if (typeof rawPrefs === 'object' && rawPrefs !== null) {
+    const parts = []
+    if (rawPrefs.learning_style)
+      parts.push(`Learning Style: ${rawPrefs.learning_style}`)
+    // Add other known preferences here
+
+    if (parts.length > 0) {
+      preferences = parts.join(', ')
+    } else if (Object.keys(rawPrefs).length > 0) {
+      // Fallback for unknown structure strings
+      try {
+        preferences = JSON.stringify(rawPrefs)
+      } catch {
+        preferences = 'Custom preferences'
+      }
+    }
+  }
 
   const historyText = history
     .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)

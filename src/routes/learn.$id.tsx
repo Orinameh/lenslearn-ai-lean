@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -65,6 +66,7 @@ function LearnPage() {
    const search = Route.useSearch() as { type?: 'text' | 'image'; session?: string }
    const loaderData = Route.useLoaderData()
    const router = useRouter()
+   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
    const { messages,
       input,
@@ -77,6 +79,13 @@ function LearnPage() {
       messagesEndRef,
       showScene,
       modelId, } = useLearn(search, id, loaderData,)
+
+   useEffect(() => {
+      if (textareaRef.current) {
+         textareaRef.current.style.height = 'auto'
+         textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
+      }
+   }, [input])
 
 
    return (
@@ -165,7 +174,7 @@ function LearnPage() {
                                              Refresh Page
                                           </button>
                                           <button
-                                             onClick={() => router.navigate({ to: '/upload' })}
+                                             onClick={() => router.navigate({ to: '/' })}
                                              className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-zinc-900 transition-colors"
                                           >
                                              Back to Upload
@@ -180,7 +189,7 @@ function LearnPage() {
                                           We couldn't find the data for this learning session.
                                        </p>
                                        <button
-                                          onClick={() => router.navigate({ to: '/upload' })}
+                                          onClick={() => router.navigate({ to: '/' })}
                                           className="mt-6 text-[10px] font-bold uppercase tracking-widest text-zinc-900 border border-black/5 px-4 py-2 rounded-xl bg-white hover:bg-zinc-50 transition-colors shadow-sm"
                                        >
                                           New Upload
@@ -298,6 +307,7 @@ function LearnPage() {
             <div className="p-6 border-t border-black/5 bg-white/80 backdrop-blur-md sticky bottom-0 z-30">
                <div className="relative">
                   <textarea
+                     ref={textareaRef}
                      value={input}
                      onChange={(e) => setInput(e.target.value)}
                      onKeyDown={(e) => {
@@ -307,11 +317,6 @@ function LearnPage() {
                         }
                      }}
                      rows={1}
-                     onInput={(e) => {
-                        const target = e.target as HTMLTextAreaElement;
-                        target.style.height = 'auto';
-                        target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
-                     }}
                      placeholder="Ask anything..."
                      className="w-full bg-white border border-black/10 rounded-2xl p-4 pr-12 text-sm outline-none focus:border-zinc-900 transition-colors shadow-sm resize-none min-h-[56px] max-h-[200px]"
                   />

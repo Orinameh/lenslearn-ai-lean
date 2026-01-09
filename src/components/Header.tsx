@@ -18,10 +18,9 @@ export default function Header() {
 
   const navLinks = [
     { label: 'Explore', href: '/explore' },
-    { label: 'Upload', href: '/upload' },
-    { label: 'History', href: '/history' },
+    { label: 'History', href: '/history', authRequired: true },
     { label: 'Pricing', href: '/pricing' },
-  ]
+  ].filter(link => !link.authRequired || user)
 
   const handleSignout = async () => {
     await logoutUserFn()

@@ -1,301 +1,100 @@
-Welcome to your new TanStack app! 
+# 👁️ LensLearn
 
-# Getting Started
+### _Turn any image into an interactive classroom._
 
-To run this application:
+LensLearn is an AI-powered visual learning platform that transforms static images and complex scenarios into interactive, guided educational experiences. Whether you're exploring a work of art, a biological diagram, or a city street, LensLearn provides the context and conversation to help you master the subject.
 
-```bash
-bun install
-bun run start
-```
+---
 
-# Building For Production
+## ✨ Key Features
 
-To build this application for production:
+### 📸 AI Visual Scene Analysis
 
-```bash
-bun run build
-```
+Upload any image to generate an interactive "learning world." LensLearn identifies 3-5 key hotspots, provides detailed educational context for each, and sets learning goals based on your profile.
 
-## Testing
+### 🎓 Guided AI Educator
 
-This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:
+Chat with a world-class AI guide that adapts its tone, depth, and examples to your age group:
 
-```bash
-bun run test
-```
+- **Kid**: Fun, curious, and simple language.
+- **Teen**: Engaging, relatable, and moderately technical.
+- **Adult**: Professional, detailed, and high-depth explanations.
 
-## Styling
+### 🛡️ Safety & Responsibility First
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
+Built for learners of all ages:
 
+- **Strict Safety Filters**: Automated blocking of dangerous, harmful, or inappropriate content.
+- **Responsible Educator Persona**: Declines medical, legal, or financial advice while encouraging a growth mindset.
+- **Safe Auditing**: All safety incidents are logged and audited to ensure a healthy learning environment.
 
-## Linting & Formatting
+### ⏳ Learning Persistence
 
+Never lose your progress. Sessions are saved automatically to your profile, allowing you to resume complex conversations and revisit explored scenes anytime.
 
-This project uses [eslint](https://eslint.org/) and [prettier](https://prettier.io/) for linting and formatting. Eslint is configured using [tanstack/eslint-config](https://tanstack.com/config/latest/docs/eslint). The following scripts are available:
+---
 
-```bash
-bun run lint
-bun run format
-bun run check
-```
+## 🛠️ Tech Stack
 
+- **Framework**: [TanStack Start](https://tanstack.com/start) — The full-stack React framework with incredible performance and type safety.
+- **Frontend**:
+  - **React 19**: Leveraging the latest React features and concurrent rendering.
+  - **Tailwind CSS 4**: Modern, efficient styling with a custom serif-typography theme.
+  - **Framer Motion**: Smooth micro-interactions and transitions.
+  - **React Markdown**: Full support for GFM, Math (LaTeX/KaTeX), and structured educational content.
+- **Backend / Services**:
+  - **Supabase**: Handles Authentication, PostgreSQL database, and high-performance Storage.
+  - **Google Gemini**: Powered by Gemini 1.5/2.0+ models for low-latency, multimodal analysis.
+  - **TanStack Store / Zustand**: Robust client-side state management.
 
+---
 
-## Routing
-This project uses [TanStack Router](https://tanstack.com/router). The initial setup is a file based router. Which means that the routes are managed as files in `src/routes`.
+## 🚀 Getting Started
 
-### Adding A Route
+### Prerequisites
 
-To add a new route to your application just add another a new file in the `./src/routes` directory.
+- [Bun](https://bun.sh/) installed.
+- A Supabase project.
+- A Google AI (Gemini) API Key.
 
-TanStack will automatically generate the content of the route file for you.
+### Installation
 
-Now that you have two routes you can use a `Link` component to navigate between them.
+1.  Clone the repository and install dependencies:
 
-### Adding Links
+    ```bash
+    bun install
+    ```
 
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
+2.  Configure your environment:
+    Create a `.env` file in the root directory:
 
-```tsx
-import { Link } from "@tanstack/react-router";
-```
+    ```env
+    VITE_SUPABASE_URL=your_supabase_url
+    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+    GEMINI_API_KEY=your_gemini_api_key
+    GEMINI_MAIN_MODEL=gemini-3-flash-preview
+    GEMINI_FALLBACK_MODEL=gemini-2.5-flash
+    GEMINI_REDZONE_MODEL=gemini-2.5-flash
+    ```
 
-Then anywhere in your JSX you can use it like so:
+3.  Start the development server:
+    ```bash
+    bun run dev
+    ```
 
-```tsx
-<Link to="/about">About</Link>
-```
+---
 
-This will create a link that will navigate to the `/about` route.
+## 🏗️ Project Structure
 
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
+- `src/routes/`: File-based routing for the dashboard, learning scenes, and user profiles.
+- `src/services/`: Core business logic:
+  - `gemini.ts`: AI prompt engineering and safety configuration.
+  - `ai-governance.ts`: Cost auditing, request routing, and model selection.
+  - `learning-funcs.ts`: Persistence and session management logic.
+- `utils/`: Custom hooks like `useLearn` for managing real-time AI streams.
 
-### Using A Layout
+---
 
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you use the `<Outlet />` component.
+## 📄 License
 
-Here is an example layout that includes a header:
-
-```tsx
-import { Outlet, createRootRoute } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-
-import { Link } from "@tanstack/react-router";
-
-export const Route = createRootRoute({
-  component: () => (
-    <>
-      <header>
-        <nav>
-          <Link to="/">Home</Link>
-          <Link to="/about">About</Link>
-        </nav>
-      </header>
-      <Outlet />
-      <TanStackRouterDevtools />
-    </>
-  ),
-})
-```
-
-The `<TanStackRouterDevtools />` component is not required so you can remove it if you don't want it in your layout.
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-const peopleRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/people",
-  loader: async () => {
-    const response = await fetch("https://swapi.dev/api/people");
-    return response.json() as Promise<{
-      results: {
-        name: string;
-      }[];
-    }>;
-  },
-  component: () => {
-    const data = peopleRoute.useLoaderData();
-    return (
-      <ul>
-        {data.results.map((person) => (
-          <li key={person.name}>{person.name}</li>
-        ))}
-      </ul>
-    );
-  },
-});
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-### React-Query
-
-React-Query is an excellent addition or alternative to route loading and integrating it into you application is a breeze.
-
-First add your dependencies:
-
-```bash
-bun install @tanstack/react-query @tanstack/react-query-devtools
-```
-
-Next we'll need to create a query client and provider. We recommend putting those in `main.tsx`.
-
-```tsx
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-
-// ...
-
-const queryClient = new QueryClient();
-
-// ...
-
-if (!rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement);
-
-  root.render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  );
-}
-```
-
-You can also add TanStack Query Devtools to the root route (optional).
-
-```tsx
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-
-const rootRoute = createRootRoute({
-  component: () => (
-    <>
-      <Outlet />
-      <ReactQueryDevtools buttonPosition="top-right" />
-      <TanStackRouterDevtools />
-    </>
-  ),
-});
-```
-
-Now you can use `useQuery` to fetch your data.
-
-```tsx
-import { useQuery } from "@tanstack/react-query";
-
-import "./App.css";
-
-function App() {
-  const { data } = useQuery({
-    queryKey: ["people"],
-    queryFn: () =>
-      fetch("https://swapi.dev/api/people")
-        .then((res) => res.json())
-        .then((data) => data.results as { name: string }[]),
-    initialData: [],
-  });
-
-  return (
-    <div>
-      <ul>
-        {data.map((person) => (
-          <li key={person.name}>{person.name}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-export default App;
-```
-
-You can find out everything you need to know on how to use React-Query in the [React-Query documentation](https://tanstack.com/query/latest/docs/framework/react/overview).
-
-## State Management
-
-Another common requirement for React applications is state management. There are many options for state management in React. TanStack Store provides a great starting point for your project.
-
-First you need to add TanStack Store as a dependency:
-
-```bash
-bun install @tanstack/store
-```
-
-Now let's create a simple counter in the `src/App.tsx` file as a demonstration.
-
-```tsx
-import { useStore } from "@tanstack/react-store";
-import { Store } from "@tanstack/store";
-import "./App.css";
-
-const countStore = new Store(0);
-
-function App() {
-  const count = useStore(countStore);
-  return (
-    <div>
-      <button onClick={() => countStore.setState((n) => n + 1)}>
-        Increment - {count}
-      </button>
-    </div>
-  );
-}
-
-export default App;
-```
-
-One of the many nice features of TanStack Store is the ability to derive state from other state. That derived state will update when the base state updates.
-
-Let's check this out by doubling the count using derived state.
-
-```tsx
-import { useStore } from "@tanstack/react-store";
-import { Store, Derived } from "@tanstack/store";
-import "./App.css";
-
-const countStore = new Store(0);
-
-const doubledStore = new Derived({
-  fn: () => countStore.state * 2,
-  deps: [countStore],
-});
-doubledStore.mount();
-
-function App() {
-  const count = useStore(countStore);
-  const doubledCount = useStore(doubledStore);
-
-  return (
-    <div>
-      <button onClick={() => countStore.setState((n) => n + 1)}>
-        Increment - {count}
-      </button>
-      <div>Doubled - {doubledCount}</div>
-    </div>
-  );
-}
-
-export default App;
-```
-
-We use the `Derived` class to create a new store that is derived from another store. The `Derived` class has a `mount` method that will start the derived store updating.
-
-Once we've created the derived store we can use it in the `App` component just like we would any other store using the `useStore` hook.
-
-You can find out everything you need to know on how to use TanStack Store in the [TanStack Store documentation](https://tanstack.com/store/latest).
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
+LensLearn is a private project. All rights reserved.

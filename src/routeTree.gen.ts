@@ -9,7 +9,6 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as UploadRouteImport } from './routes/upload'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PricingRouteImport } from './routes/pricing'
@@ -21,11 +20,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as LearnIdRouteImport } from './routes/learn.$id'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 
-const UploadRoute = UploadRouteImport.update({
-  id: '/upload',
-  path: '/upload',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -86,7 +80,6 @@ export interface FileRoutesByFullPath {
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/signup': typeof SignupRoute
-  '/upload': typeof UploadRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/learn/$id': typeof LearnIdRoute
 }
@@ -99,7 +92,6 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/signup': typeof SignupRoute
-  '/upload': typeof UploadRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/learn/$id': typeof LearnIdRoute
 }
@@ -113,7 +105,6 @@ export interface FileRoutesById {
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/signup': typeof SignupRoute
-  '/upload': typeof UploadRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/learn/$id': typeof LearnIdRoute
 }
@@ -128,7 +119,6 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/profile'
     | '/signup'
-    | '/upload'
     | '/auth/callback'
     | '/learn/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -141,7 +131,6 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/profile'
     | '/signup'
-    | '/upload'
     | '/auth/callback'
     | '/learn/$id'
   id:
@@ -154,7 +143,6 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/profile'
     | '/signup'
-    | '/upload'
     | '/auth/callback'
     | '/learn/$id'
   fileRoutesById: FileRoutesById
@@ -168,20 +156,12 @@ export interface RootRouteChildren {
   PricingRoute: typeof PricingRoute
   ProfileRoute: typeof ProfileRoute
   SignupRoute: typeof SignupRoute
-  UploadRoute: typeof UploadRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   LearnIdRoute: typeof LearnIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/upload': {
-      id: '/upload'
-      path: '/upload'
-      fullPath: '/upload'
-      preLoaderRoute: typeof UploadRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -264,7 +244,6 @@ const rootRouteChildren: RootRouteChildren = {
   PricingRoute: PricingRoute,
   ProfileRoute: ProfileRoute,
   SignupRoute: SignupRoute,
-  UploadRoute: UploadRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   LearnIdRoute: LearnIdRoute,
 }
