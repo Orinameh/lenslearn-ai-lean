@@ -1,12 +1,22 @@
 import { HeadContent, Scripts, createRootRoute, Outlet } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
-import { useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
 
 import Header from '../components/Header'
-import { checkSessionFn } from '../services/auth-funcs'
-import { useAuthStore } from '../services/authStore'
+// import { checkSessionFn, logoutUserFn } from '../services/auth-funcs'
+
+// Mock User for Client
+const MOCK_USER = {
+  id: 'demo-user-123',
+  email: 'demo@lenslearn.ai',
+  full_name: 'Demo User',
+  app_metadata: {},
+  user_metadata: { role: 'user' },
+  aud: 'authenticated',
+  created_at: new Date().toISOString()
+}
+
 
 import appCss from '../styles.css?url'
 import { seo } from 'utils/seo'
@@ -17,9 +27,9 @@ import 'katex/dist/katex.min.css'
 export const Route = createRootRoute({
   errorComponent: ErrorComponent,
   beforeLoad: async () => {
-    const result = await checkSessionFn()
+    // POC: Always logged in
     return {
-      user: result?.user || null,
+      user: MOCK_USER,
     }
   },
   head: () => ({
@@ -54,13 +64,8 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-  const { setUser, setLoading } = useAuthStore()
-  const { user } = Route.useRouteContext()
 
-  useEffect(() => {
-    setUser(user)
-    setLoading(false)
-  }, [user, setUser, setLoading])
+
 
   return (
     <html lang="en" suppressHydrationWarning>

@@ -1,32 +1,20 @@
-import { Link, useRouter } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import {
   Menu,
   X,
   Sparkles,
-  LogOut,
-  User
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { logoutUserFn } from '../services/auth-funcs'
-import { useAuthStore } from '../services/authStore'
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)
-  const { user, logout } = useAuthStore()
-  const router = useRouter()
 
   const navLinks = [
     { label: 'Explore', href: '/explore' },
-    { label: 'History', href: '/history', authRequired: true },
-    { label: 'Pricing', href: '/pricing' },
-  ].filter(link => !link.authRequired || user)
+  ]
 
-  const handleSignout = async () => {
-    await logoutUserFn()
-    logout()
-    router.invalidate()
-  }
+
 
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md z-50 border-b border-black/5">
@@ -52,45 +40,7 @@ export default function Header() {
           ))}
         </nav>
 
-        {/* Actions */}
-        <div className="hidden md:flex items-center gap-3">
-          {user ? (
-            <div className="flex items-center gap-4">
-              <Link
-                to="/profile"
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-50 border border-black/5 hover:bg-zinc-100 transition-colors"
-                title="Profile Settings"
-              >
-                <div className="w-6 h-6 rounded-full bg-zinc-900 flex items-center justify-center">
-                  <User size={12} className="text-white" />
-                </div>
-                <span className="text-xs font-bold text-zinc-900">{user.email?.split('@')[0]}</span>
-              </Link>
-              <button
-                onClick={handleSignout}
-                className="p-2 text-zinc-400 hover:text-zinc-900 transition-colors"
-                title="Sign out"
-              >
-                <LogOut size={18} />
-              </button>
-            </div>
-          ) : (
-            <>
-              <Link
-                to="/login"
-                className="px-4 py-2 text-sm font-bold bg-zinc-950 text-white rounded-lg hover:bg-zinc-800 transition-colors"
-              >
-                Sign in
-              </Link>
-              <Link
-                to="/signup"
-                className="px-4 py-2 text-sm font-bold bg-zinc-100 text-zinc-900 rounded-lg hover:bg-zinc-200 transition-colors border border-black/5"
-              >
-                Sign up
-              </Link>
-            </>
-          )}
-        </div>
+
 
         {/* Mobile Menu Toggle */}
         <button
@@ -120,47 +70,7 @@ export default function Header() {
                 {link.label}
               </Link>
             ))}
-            <div className="flex flex-col gap-3 pt-6 border-t border-black/5">
-              {user ? (
-                <>
-                  <Link
-                    to="/profile"
-                    onClick={() => setIsOpen(false)}
-                    className="w-full py-3 font-bold bg-zinc-50 text-zinc-900 rounded-xl border border-black/5 flex items-center justify-center gap-2"
-                  >
-                    <User size={18} />
-                    Profile Settings
-                  </Link>
-                  <button
-                    onClick={() => {
-                      handleSignout()
-                      setIsOpen(false)
-                    }}
-                    className="w-full py-3 font-bold bg-zinc-100 text-zinc-900 rounded-xl border border-black/5 flex items-center justify-center gap-2"
-                  >
-                    <LogOut size={18} />
-                    Sign out
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link
-                    to="/login"
-                    onClick={() => setIsOpen(false)}
-                    className="w-full py-3 font-bold bg-zinc-950 text-white rounded-xl text-center"
-                  >
-                    Sign in
-                  </Link>
-                  <Link
-                    to="/signup"
-                    onClick={() => setIsOpen(false)}
-                    className="w-full py-3 font-bold bg-zinc-100 text-zinc-900 rounded-xl border border-black/5 text-center"
-                  >
-                    Sign up
-                  </Link>
-                </>
-              )}
-            </div>
+
           </motion.div>
         )}
       </AnimatePresence>

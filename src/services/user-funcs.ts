@@ -1,40 +1,38 @@
 import { createServerFn } from '@tanstack/react-start'
-import { requireUser } from './auth-helper'
 
-export const getUserProfileFn = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const { user, supabase } = await requireUser()
+export const getUserProfileFn = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    // POC: Return static Pro profile
+    return {
+      user_id: 'demo-user-123',
+      email: 'demo@lenslearn.ai',
+      full_name: 'Demo User',
+      subscription_tier: 'pro_yearly', // Unlimited access
+      cost_used: 0,
+      image_gens_count: 0,
+      voice_enabled: true,
+      role: 'user',
+      preferences: {
+        theme: 'light',
+        language: 'en',
+      },
+    }
+  },
+)
 
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', user.id)
-      .single()
-
-    if (error && error.code !== 'PGRST116') throw new Error(error.message)
-    return profile || null
-  })
-
-export const updateUserProfileFn = createServerFn({ method: "POST" })
-  .inputValidator((d: { 
-    age_group?: 'kid' | 'teen' | 'adult'; 
-    preferences?: any; 
-    voice_enabled?: boolean; 
-    language?: string;
-    role?: 'user' | 'admin';
-    provider?: 'email' | 'google';
-  }) => d)
+export const updateUserProfileFn = createServerFn({ method: 'POST' })
+  .inputValidator(
+    (d: {
+      age_group?: 'kid' | 'teen' | 'adult'
+      preferences?: any
+      voice_enabled?: boolean
+      language?: string
+      role?: 'user' | 'admin'
+      provider?: 'email' | 'google'
+    }) => d,
+  )
   .handler(async ({ data }) => {
-    const { user, supabase } = await requireUser()
-
-    const { error } = await supabase
-      .from('profiles')
-      .upsert({
-        user_id: user.id,
-        ...data,
-        updated_at: new Date().toISOString()
-      })
-
-    if (error) throw new Error(error.message)
+    // POC: Do nothing, just return success
+    console.log('[POC] Mocking profile update:', data)
     return { success: true }
   })

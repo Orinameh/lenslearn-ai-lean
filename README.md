@@ -2,7 +2,7 @@
 
 ### _Turn any image into an interactive classroom._
 
-LensLearn is an AI-powered visual learning platform that transforms static images and complex scenarios into interactive, guided educational experiences. Whether you're exploring a work of art, a biological diagram, or a city street, LensLearn provides the context and conversation to help you master the subject.
+LensLearn is an AI-powered visual learning platform that transforms static images and complex scenarios into interactive, guided educational experiences. It features a **Guided AI Educator** that helps you master any subject through conversation and context. This version is a **Stateless Proof of Concept (POC)** designed for rapid demonstration and testing without backend persistence.
 
 ---
 
@@ -10,42 +10,32 @@ LensLearn is an AI-powered visual learning platform that transforms static image
 
 ### 📸 AI Visual Scene Analysis
 
-Upload any image to generate an interactive "learning world." LensLearn identifies 3-5 key hotspots, provides detailed educational context for each, and sets learning goals based on your profile.
+Upload any image to generate an interactive "learning world." LensLearn identifies key hotspots and provides contexts.
+_Note: In this POC, images are analyzed on-the-fly and results are stored temporarily in browser memory._
 
 ### 🎓 Guided AI Educator
 
-Chat with a world-class AI guide that adapts its tone, depth, and examples to your age group:
+Chat with a world-class AI guide that adapts its tone to your preferences.
+_Note: The app simulates a "Pro" user experience by default._
 
-- **Kid**: Fun, curious, and simple language.
-- **Teen**: Engaging, relatable, and moderately technical.
-- **Adult**: Professional, detailed, and high-depth explanations.
+### 🚀 Instant Access (No Login)
 
-### 🛡️ Safety & Responsibility First
-
-Built for learners of all ages:
-
-- **Strict Safety Filters**: Automated blocking of dangerous, harmful, or inappropriate content.
-- **Responsible Educator Persona**: Declines medical, legal, or financial advice while encouraging a growth mindset.
-- **Safe Auditing**: All safety incidents are logged and audited to ensure a healthy learning environment.
-
-### ⏳ Learning Persistence
-
-Never lose your progress. Sessions are saved automatically to your profile, allowing you to resume complex conversations and revisit explored scenes anytime.
+Authentication and paywalls have been bypassed for this demo. You are automatically logged in as a demo user with unlimited access to premium AI models.
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Framework**: [TanStack Start](https://tanstack.com/start) — The full-stack React framework with incredible performance and type safety.
+- **Framework**: [TanStack Start](https://tanstack.com/start) — The full-stack React framework.
 - **Frontend**:
-  - **React 19**: Leveraging the latest React features and concurrent rendering.
-  - **Tailwind CSS 4**: Modern, efficient styling with a custom serif-typography theme.
-  - **Framer Motion**: Smooth micro-interactions and transitions.
-  - **React Markdown**: Full support for GFM, Math (LaTeX/KaTeX), and structured educational content.
-- **Backend / Services**:
-  - **Supabase**: Handles Authentication, PostgreSQL database, and high-performance Storage.
-  - **Google Gemini**: Powered by Gemini 1.5/2.0+ models for low-latency, multimodal analysis.
-  - **TanStack Store / Zustand**: Robust client-side state management.
+  - **React 19**: Leveraging concurrent rendering.
+  - **Tailwind CSS 4**: Modern styling.
+  - **Framer Motion**: Smooth interactions.
+  - **React Markdown**: Rendering rich educational content.
+- **AI Services**:
+  - **Google Gemini**: Powered by Gemini 1.5 Pro Models for multimodal analysis.
+- **State Management**:
+  - **Transient Store**: Custom in-memory store for passing image data between routes (`src/store.ts`).
 
 ---
 
@@ -53,8 +43,7 @@ Never lose your progress. Sessions are saved automatically to your profile, allo
 
 ### Prerequisites
 
-- [Bun](https://bun.sh/) installed.
-- A Supabase project.
+- [Bun](https://bun.sh/) or [Node.js](https://nodejs.org/) installed.
 - A Google AI (Gemini) API Key.
 
 ### Installation
@@ -62,6 +51,8 @@ Never lose your progress. Sessions are saved automatically to your profile, allo
 1.  Clone the repository and install dependencies:
 
     ```bash
+    npm install
+    # or
     bun install
     ```
 
@@ -69,16 +60,14 @@ Never lose your progress. Sessions are saved automatically to your profile, allo
     Create a `.env` file in the root directory:
 
     ```env
-    VITE_SUPABASE_URL=your_supabase_url
-    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
     GEMINI_API_KEY=your_gemini_api_key
-    GEMINI_MAIN_MODEL=gemini-3-flash-preview
-    GEMINI_FALLBACK_MODEL=gemini-2.5-flash
-    GEMINI_REDZONE_MODEL=gemini-2.5-flash
+    GEMINI_MAIN_MODEL=gemini-1.5-pro
     ```
 
 3.  Start the development server:
     ```bash
+    npm run dev
+    # or
     bun run dev
     ```
 
@@ -86,12 +75,21 @@ Never lose your progress. Sessions are saved automatically to your profile, allo
 
 ## 🏗️ Project Structure
 
-- `src/routes/`: File-based routing for the dashboard, learning scenes, and user profiles.
-- `src/services/`: Core business logic:
-  - `gemini.ts`: AI prompt engineering and safety configuration.
-  - `ai-governance.ts`: Cost auditing, request routing, and model selection.
-  - `learning-funcs.ts`: Persistence and session management logic.
-- `utils/`: Custom hooks like `useLearn` for managing real-time AI streams.
+- `src/routes/`: File-based routing.
+  - `index.tsx`: Main upload hub. Handles image processing and stores result in memory.
+  - `learn.$id.tsx`: Learning interface. Reads from memory to display scene without DB fetching.
+- `src/services/`:
+  - `server-funcs.ts`: Server-side functions for AI interaction (Auth/DB logic removed).
+  - `gemini.ts`: AI interaction logic.
+- `src/utils/store.ts`: **[New]** Simple ephemeral store for passing analysis data between pages.
+
+---
+
+## ⚠️ Limitations
+
+- **No Persistence**: Refreshing the page during an image session will reset the scene (mock fallback provided).
+- **No User Profiles**: Preferences are not saved between sessions.
+- **No History**: Chat history is not saved to a database.
 
 ---
 

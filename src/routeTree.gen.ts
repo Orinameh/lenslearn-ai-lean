@@ -9,42 +9,11 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SignupRouteImport } from './routes/signup'
-import { Route as ProfileRouteImport } from './routes/profile'
-import { Route as PricingRouteImport } from './routes/pricing'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as HistoryRouteImport } from './routes/history'
 import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LearnIdRouteImport } from './routes/learn.$id'
-import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 
-const SignupRoute = SignupRouteImport.update({
-  id: '/signup',
-  path: '/signup',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProfileRoute = ProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PricingRoute = PricingRouteImport.update({
-  id: '/pricing',
-  path: '/pricing',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HistoryRoute = HistoryRouteImport.update({
-  id: '/history',
-  path: '/history',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ExploreRoute = ExploreRouteImport.update({
   id: '/explore',
   path: '/explore',
@@ -65,34 +34,17 @@ const LearnIdRoute = LearnIdRouteImport.update({
   path: '/learn/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthCallbackRoute = AuthCallbackRouteImport.update({
-  id: '/auth/callback',
-  path: '/auth/callback',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/explore': typeof ExploreRoute
-  '/history': typeof HistoryRoute
-  '/login': typeof LoginRoute
-  '/pricing': typeof PricingRoute
-  '/profile': typeof ProfileRoute
-  '/signup': typeof SignupRoute
-  '/auth/callback': typeof AuthCallbackRoute
   '/learn/$id': typeof LearnIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/explore': typeof ExploreRoute
-  '/history': typeof HistoryRoute
-  '/login': typeof LoginRoute
-  '/pricing': typeof PricingRoute
-  '/profile': typeof ProfileRoute
-  '/signup': typeof SignupRoute
-  '/auth/callback': typeof AuthCallbackRoute
   '/learn/$id': typeof LearnIdRoute
 }
 export interface FileRoutesById {
@@ -100,103 +52,25 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/explore': typeof ExploreRoute
-  '/history': typeof HistoryRoute
-  '/login': typeof LoginRoute
-  '/pricing': typeof PricingRoute
-  '/profile': typeof ProfileRoute
-  '/signup': typeof SignupRoute
-  '/auth/callback': typeof AuthCallbackRoute
   '/learn/$id': typeof LearnIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/$'
-    | '/explore'
-    | '/history'
-    | '/login'
-    | '/pricing'
-    | '/profile'
-    | '/signup'
-    | '/auth/callback'
-    | '/learn/$id'
+  fullPaths: '/' | '/$' | '/explore' | '/learn/$id'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/$'
-    | '/explore'
-    | '/history'
-    | '/login'
-    | '/pricing'
-    | '/profile'
-    | '/signup'
-    | '/auth/callback'
-    | '/learn/$id'
-  id:
-    | '__root__'
-    | '/'
-    | '/$'
-    | '/explore'
-    | '/history'
-    | '/login'
-    | '/pricing'
-    | '/profile'
-    | '/signup'
-    | '/auth/callback'
-    | '/learn/$id'
+  to: '/' | '/$' | '/explore' | '/learn/$id'
+  id: '__root__' | '/' | '/$' | '/explore' | '/learn/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SplatRoute: typeof SplatRoute
   ExploreRoute: typeof ExploreRoute
-  HistoryRoute: typeof HistoryRoute
-  LoginRoute: typeof LoginRoute
-  PricingRoute: typeof PricingRoute
-  ProfileRoute: typeof ProfileRoute
-  SignupRoute: typeof SignupRoute
-  AuthCallbackRoute: typeof AuthCallbackRoute
   LearnIdRoute: typeof LearnIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/signup': {
-      id: '/signup'
-      path: '/signup'
-      fullPath: '/signup'
-      preLoaderRoute: typeof SignupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/profile': {
-      id: '/profile'
-      path: '/profile'
-      fullPath: '/profile'
-      preLoaderRoute: typeof ProfileRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pricing': {
-      id: '/pricing'
-      path: '/pricing'
-      fullPath: '/pricing'
-      preLoaderRoute: typeof PricingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/history': {
-      id: '/history'
-      path: '/history'
-      fullPath: '/history'
-      preLoaderRoute: typeof HistoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/explore': {
       id: '/explore'
       path: '/explore'
@@ -225,13 +99,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LearnIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/auth/callback': {
-      id: '/auth/callback'
-      path: '/auth/callback'
-      fullPath: '/auth/callback'
-      preLoaderRoute: typeof AuthCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -239,12 +106,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SplatRoute: SplatRoute,
   ExploreRoute: ExploreRoute,
-  HistoryRoute: HistoryRoute,
-  LoginRoute: LoginRoute,
-  PricingRoute: PricingRoute,
-  ProfileRoute: ProfileRoute,
-  SignupRoute: SignupRoute,
-  AuthCallbackRoute: AuthCallbackRoute,
   LearnIdRoute: LearnIdRoute,
 }
 export const routeTree = rootRouteImport

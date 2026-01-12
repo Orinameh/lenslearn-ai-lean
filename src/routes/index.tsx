@@ -17,11 +17,9 @@ import {
 import { PreferencesBar } from '../components/PreferencesBar'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect, useRef } from 'react'
-import { useAuthStore } from '../services/authStore'
-import { exploreWorldsFn, getUserSessionsFn } from '../services/learning-funcs'
+import { exploreWorldsFn, } from '../services/learning-funcs'
 import { processMediaAnalysisFn } from '../services/server-funcs'
 import toast from 'react-hot-toast'
-import { UpgradeModal } from '../components/UpgradeModal'
 import { seo } from 'utils/seo'
 
 export const Route = createFileRoute('/')({
@@ -38,11 +36,9 @@ export const Route = createFileRoute('/')({
 function App() {
   const [input, setInput] = useState('')
   const navigate = useNavigate()
-  const { user } = useAuthStore()
 
 
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -58,10 +54,6 @@ function App() {
   }, [])
 
   const handleLensClick = () => {
-    if (!user) {
-      navigate({ to: '/login', search: { redirect: '/' } })
-      return
-    }
     fileInputRef.current?.click()
   }
 
@@ -96,10 +88,6 @@ function App() {
   }
 
   const handleSubmit = async () => {
-    if (!user) {
-      navigate({ to: '/login', search: { redirect: '/' } })
-      return
-    }
 
     if (selectedFile) {
       setIsAnalyzing(true)
@@ -109,14 +97,31 @@ function App() {
         reader.onload = async () => {
           try {
             const base64 = (reader.result as string).split(',')[1]
-            const { mediaId } = await processMediaAnalysisFn({
+            // import { currentSessionStore } from '../utils/store'
+
+            const { userPreferencesStore } = await import('../store')
+            const prefs = userPreferencesStore.get()
+
+            const { mediaId, analysis } = await processMediaAnalysisFn({
               data: {
                 fileName: selectedFile.name,
                 fileType: selectedFile.type,
                 base64: base64,
                 initialPrompt: input,
+                preferences: prefs
               }
             })
+
+            // Store transient data for the next route
+            if (previewUrl) {
+              // We use the simpler method of module-level store because state in navigate is tricky with serialization
+              const { currentSessionStore } = await import('../store')
+              currentSessionStore.set({
+                id: mediaId,
+                imageUrl: previewUrl,
+                analysis: analysis
+              })
+            }
 
             toast.success("Scene generated successfully!")
             navigate({
@@ -126,11 +131,7 @@ function App() {
             })
           } catch (error: any) {
             console.error("Analysis failed", error)
-            if (error.message?.includes('PAYMENT_REQUIRED')) {
-              setShowUpgradeModal(true)
-            } else {
-              toast.error(error.message || "Failed to process image")
-            }
+            toast.error(error.message || "Failed to process image")
           } finally {
             setIsAnalyzing(false)
           }
@@ -147,7 +148,7 @@ function App() {
   }
 
   const [featuredWorlds, setFeaturedWorlds] = useState<any[]>([])
-  const [recentSessions, setRecentSessions] = useState<any[]>([])
+  const [recentSessions] = useState<any[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -155,12 +156,7 @@ function App() {
       setFeaturedWorlds(worlds)
     })
 
-    if (user) {
-      getUserSessionsFn({ data: { limit: 6 } }).then(sessions => {
-        setRecentSessions(sessions || [])
-      }).catch(err => console.error("Failed to fetch sessions:", err))
-    }
-  }, [user])
+  }, [])
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -221,7 +217,6 @@ function App() {
               e.currentTarget.classList.remove('border-zinc-900', 'bg-zinc-50/50')
               const file = e.dataTransfer.files?.[0]
               if (file) {
-                if (!user) { navigate({ to: '/login' }); return }
                 handleFileChange({ target: { files: [file] } } as any)
               }
             }}
@@ -309,11 +304,9 @@ function App() {
             </div>
           </div>
 
-          {user && (
-            <div className="flex justify-center w-full -mt-2 mb-2">
-              <PreferencesBar userId={user.id} />
-            </div>
-          )}
+          <div className="flex justify-center w-full -mt-2 mb-2">
+            <PreferencesBar />
+          </div>
 
           <div className="flex items-center justify-center gap-6 px-4">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-300 flex items-center gap-2">
@@ -331,16 +324,13 @@ function App() {
 
       {/* Recent Learning Section */}
       {
-        user && recentSessions.length > 0 && (
+        recentSessions.length > 0 && (
           <section className="w-full max-w-6xl px-6 mb-20">
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-sm font-bold text-zinc-950 uppercase tracking-widest flex items-center gap-2">
                 <History size={16} className="text-orange-500" />
                 Recent Learning
               </h3>
-              <Link to="/history" className="text-xs font-bold text-zinc-400 hover:text-zinc-900 flex items-center gap-1 transition-colors">
-                VIEW ALL <ArrowRight size={12} />
-              </Link>
             </div>
 
             <div className="flex gap-4 overflow-x-auto pb-4 -mx-6 px-6 no-scrollbar">
@@ -459,13 +449,6 @@ function App() {
           </div>
         </div>
       </footer>
-      <UpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        onUpgradeSuccess={() => {
-          toast.success("Ready to create! Click the lens again.")
-        }}
-      />
     </div >
   )
 }

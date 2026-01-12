@@ -58,7 +58,6 @@ export const useLearn = (
     const [input, setInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [modelId, setModelId] = useState<string>(import.meta.env.VITE_GEMINI_MAIN_MODEL)
-    const [showUpgradeModal, setShowUpgradeModal] = useState(false)
     const messagesContainerRef = useRef<HTMLDivElement>(null)
 
     // Improved auto-scroll function to use window scroll
@@ -143,20 +142,25 @@ export const useLearn = (
             return [...prev, { role: 'assistant', text: '' }]
         })
 
+        // import { userPreferencesStore } from '../src/store'
+
         try {
+            const { userPreferencesStore } = await import('../src/store')
+            const prefs = userPreferencesStore.get()
+
             const response = await getExplanationStreamFn({
                 data: {
                     context: showScene
                         ? "Global Context: Learning scene about " + id
                         : "Global Context: Learning about " + id,
                     question: userMessage,
-                    history: currentMessages
+                    history: currentMessages,
+                    preferences: prefs
                 }
             })
 
             if (!response.ok) {
                 if (response.status === 402) {
-                    setShowUpgradeModal(true)
                     setMessages(prev => {
                         const newMessages = [...prev]
                         newMessages[newMessages.length - 1] = {
@@ -310,8 +314,6 @@ export const useLearn = (
         messages,
         input,
         isLoading,
-        showUpgradeModal,
-        setShowUpgradeModal,
         handleSend,
         setInput,
         messagesContainerRef,

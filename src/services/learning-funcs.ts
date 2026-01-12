@@ -1,5 +1,27 @@
 import { createServerFn } from '@tanstack/react-start'
-import { requireUser } from './auth-helper'
+
+// Mock Data
+const MOCK_SESSION = {
+  id: 'mock-session-id',
+  user_id: 'demo-user-123',
+  entry_point: 'explore',
+  world: 'renaissance-florence',
+  media_id: null, // or 'mock-media-id'
+  title: 'Renaissance Florence Exploration',
+  created_at: new Date().toISOString(),
+  messages: [
+    {
+      role: 'user',
+      text: 'Hello, tell me about Florence.',
+      created_at: new Date().toISOString(),
+    },
+    {
+      role: 'assistant',
+      text: 'Florence is the capital city of the Tuscany region of Italy. It is considered the birthplace of the Renaissance.',
+      created_at: new Date().toISOString(),
+    },
+  ],
+}
 
 export const exploreWorldsFn = createServerFn({ method: 'GET' }).handler(
   async () => {
@@ -103,43 +125,9 @@ export const exploreWorldsFn = createServerFn({ method: 'GET' }).handler(
 export const getLearningSessionFn = createServerFn({ method: 'GET' })
   .inputValidator((d: { id: string }) => d)
   .handler(async ({ data }) => {
-    const { user, supabase } = await requireUser()
-
-    const { data: session, error } = await supabase
-      .from('learning_sessions')
-      .select('*')
-      .eq('id', data.id)
-      .eq('user_id', user.id)
-      .single()
-
-    if (error) throw new Error(error.message)
-    return session
-  })
-
-export const getLatestSessionFn = createServerFn({ method: 'GET' })
-  .inputValidator((d: { world?: string; mediaId?: string }) => d)
-  .handler(async ({ data }) => {
-    const { user, supabase } = await requireUser()
-
-    let query = supabase
-      .from('learning_sessions')
-      .select('*')
-      .eq('user_id', user.id)
-
-    if (data.world) {
-      query = query.eq('world', data.world)
-    }
-    if (data.mediaId) {
-      query = query.eq('media_id', data.mediaId)
-    }
-
-    const { data: session, error } = await query
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (error) throw new Error(error.message)
-    return session
+    // POC: Return mock session
+    // In a real stub we might vary the content based on ID logic if we wanted to be fancy, but simple is fine.
+    return { ...MOCK_SESSION, id: data.id }
   })
 
 export const createLearningSessionFn = createServerFn({ method: 'POST' })
@@ -152,23 +140,14 @@ export const createLearningSessionFn = createServerFn({ method: 'POST' })
     }) => d,
   )
   .handler(async ({ data }) => {
-    const { user, supabase } = await requireUser()
-
-    const { data: session, error } = await supabase
-      .from('learning_sessions')
-      .insert({
-        user_id: user.id,
-        entry_point: data.entry_point,
-        world: data.world,
-        media_id: data.media_id,
-        title: data.title,
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single()
-
-    if (error) throw new Error(error.message)
-    return session
+    // POC: Return new mock session
+    return {
+      ...MOCK_SESSION,
+      id: `mock-session-${Date.now()}`,
+      world: data.world || MOCK_SESSION.world,
+      title: data.title || MOCK_SESSION.title,
+      messages: [], // New session starts empty
+    }
   })
 
 export const saveMessageFn = createServerFn({ method: 'POST' })
@@ -176,93 +155,7 @@ export const saveMessageFn = createServerFn({ method: 'POST' })
     (d: { sessionId: string; role: 'user' | 'assistant'; text: string }) => d,
   )
   .handler(async ({ data }) => {
-    const { user, supabase } = await requireUser()
-
-    // 1. Fetch current messages with a lock-like check by using the latest session state
-    const { data: session, error: fetchError } = await supabase
-      .from('learning_sessions')
-      .select('messages')
-      .eq('id', data.sessionId)
-      .eq('user_id', user.id)
-      .single()
-
-    if (fetchError) {
-      console.error('Fetch error in saveMessageFn:', fetchError)
-      throw new Error(`Failed to fetch session: ${fetchError.message}`)
-    }
-
-    // Ensure we handle the case where messages might be null or not an array
-    const existingMessages = Array.isArray(session.messages)
-      ? session.messages
-      : []
-
-    const newMessage = {
-      role: data.role,
-      text: data.text,
-      created_at: new Date().toISOString(),
-    }
-
-    // 2. Update with appended message using standard client (respects RLS)
-    const { error: updateError } = await supabase
-      .from('learning_sessions')
-      .update({
-        messages: [...existingMessages, newMessage],
-      })
-      .eq('id', data.sessionId)
-      .eq('user_id', user.id)
-
-    if (updateError) {
-      console.error('Update error in saveMessageFn:', updateError)
-      throw new Error(`Failed to update messages: ${updateError.message}`)
-    }
-
+    // POC: Just log it
+    console.log('[POC] Saving message:', data)
     return { success: true }
   })
-
-export const getSessionMessagesFn = createServerFn({ method: 'GET' })
-  .inputValidator((d: { sessionId: string }) => d)
-  .handler(async ({ data }) => {
-    const { user, supabase } = await requireUser()
-
-    const { data: session, error } = await supabase
-      .from('learning_sessions')
-      .select('messages')
-      .eq('id', data.sessionId)
-      .eq('user_id', user.id)
-      .single()
-
-    if (error) throw new Error(error.message)
-    return session.messages || []
-  })
-
-export const getUserSessionsFn = createServerFn({ method: 'GET' })
-  .inputValidator((d: { limit?: number; offset?: number } | undefined) => d)
-  .handler(async ({ data }) => {
-    const { user, supabase } = await requireUser()
-    const limit = data?.limit ?? 10
-    const offset = data?.offset ?? 0
-
-    const { data: sessions, error } = await supabase
-      .from('learning_sessions')
-      .select('*, media:media_id(*)')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1)
-
-    if (error) throw new Error(error.message)
-    return sessions
-  })
-
-export const getHistoryCountFn = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    const { user, supabase } = await requireUser()
-
-    const { count, error } = await supabase
-      .from('learning_sessions')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-
-    if (error) throw new Error(error.message)
-    return count || 0
-  },
-)

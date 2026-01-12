@@ -1,7 +1,6 @@
 import { useRef, useEffect } from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { motion } from 'framer-motion'
-import toast from 'react-hot-toast'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -17,15 +16,13 @@ import {
    Share2,
    Loader2
 } from 'lucide-react'
-import { UpgradeModal } from '../components/UpgradeModal'
 
-import { authGuard } from '../services/authMiddleware'
 import { useLearn } from 'utils/useLearn'
-import { getMediaFn } from '@/services/media-funcs'
 import { getLearningSessionFn } from '@/services/learning-funcs'
 
+
+
 export const Route = createFileRoute('/learn/$id')({
-   beforeLoad: authGuard,
    loader: async ({ params, location }) => {
       const search = location.search as { type?: 'text' | 'image'; session?: string }
 
@@ -35,20 +32,33 @@ export const Route = createFileRoute('/learn/$id')({
       if (search.session) {
          try {
             sessionData = await getLearningSessionFn({ data: { id: search.session } })
-            // If it's an image session, we might need to override the ID from the session's media_id
-            if (sessionData.media_id) {
-               mediaData = await getMediaFn({ data: { id: sessionData.media_id } })
-            }
+            // POC: Skip fetching persistent media for the session
          } catch (e) {
             console.error("Failed to fetch session data:", e)
          }
       }
 
       if (search.type === 'image' && !mediaData) {
-         try {
-            mediaData = await getMediaFn({ data: { id: params.id } })
-         } catch (e) {
-            console.error("Failed to fetch media data:", e)
+         // POC: Check transient store first
+         const { currentSessionStore } = await import('../store')
+         const storedData = currentSessionStore.get(params.id)
+
+         if (storedData) {
+            mediaData = {
+               id: storedData.id,
+               storage_url: storedData.imageUrl,
+               analysis_data: storedData.analysis
+            }
+         } else {
+            // POC: Mock media fallback for image learning (reloads)
+            mediaData = {
+               id: params.id,
+               storage_url: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&q=80&w=800', // Placeholder
+               analysis_data: {
+                  hotspots: [],
+                  suggestedGoal: "Explore this scene"
+               }
+            }
          }
       }
 
@@ -71,8 +81,6 @@ function LearnPage() {
    const { messages,
       input,
       isLoading,
-      showUpgradeModal,
-      setShowUpgradeModal,
       handleSend,
       setInput,
       messagesContainerRef,
@@ -334,11 +342,6 @@ function LearnPage() {
             </div>
          </div>
 
-         <UpgradeModal
-            isOpen={showUpgradeModal}
-            onClose={() => setShowUpgradeModal(false)}
-            onUpgradeSuccess={() => toast.success("You're now a Pro learner!")}
-         />
       </div >
    )
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     Baby,
@@ -11,74 +11,48 @@ import {
     ChevronDown,
     Loader2
 } from 'lucide-react'
-import { getUserProfileFn, updateUserProfileFn } from '../services/user-funcs'
+// import { getUserProfileFn, updateUserProfileFn } from '../services/user-funcs'
+import { userPreferencesStore } from '../store'
 import toast from 'react-hot-toast'
 
-interface PreferencesBarProps {
-    userId: string
-}
 
-export function PreferencesBar({ userId }: PreferencesBarProps) {
-    const [loading, setLoading] = useState(true)
+
+export function PreferencesBar() {
     const [updating, setUpdating] = useState(false)
-    const [ageGroup, setAgeGroup] = useState<'kid' | 'teen' | 'adult'>('adult')
-    const [learningStyle, setLearningStyle] = useState<'visual' | 'auditory' | 'textual' | 'balanced'>('balanced')
+    const defaults = userPreferencesStore.get()
+    const [ageGroup, setAgeGroup] = useState<'kid' | 'teen' | 'adult'>(defaults.ageGroup as any)
+    const [learningStyle, setLearningStyle] = useState<'visual' | 'auditory' | 'textual' | 'balanced'>(defaults.learningStyle as any)
 
     const [openDropdown, setOpenDropdown] = useState<'age' | 'style' | null>(null)
 
-    useEffect(() => {
-        loadProfile()
-    }, [userId])
 
-    const loadProfile = async () => {
-        try {
-            const profile = await getUserProfileFn()
-            if (profile) {
-                if (profile.age_group) setAgeGroup(profile.age_group)
-                if (profile.preferences?.learning_style) setLearningStyle(profile.preferences.learning_style)
-            }
-        } catch (error) {
-            console.error('Failed to load profile prefs', error)
-        } finally {
-            setLoading(false)
-        }
-    }
-
-    const updatePreference = async (type: 'age' | 'style', value: string) => {
+    const updatePreference = (type: 'age' | 'style', value: string) => {
         setUpdating(true)
         setOpenDropdown(null)
 
-        // Optimistic update
-        if (type === 'age') setAgeGroup(value as any)
-        if (type === 'style') setLearningStyle(value as any)
+        let newAge = ageGroup
+        let newStyle = learningStyle
+
+        if (type === 'age') {
+            newAge = value as any
+            setAgeGroup(newAge)
+        }
+        if (type === 'style') {
+            newStyle = value as any
+            setLearningStyle(newStyle)
+        }
 
         try {
-            // Fetch current profile to ensure we merge preferences correctly
-            const currentProfile = await getUserProfileFn()
-            const existingPreferences = currentProfile?.preferences || {}
-
-            const updateData: any = {}
-            if (type === 'age') {
-                updateData.age_group = value
-            } else {
-                updateData.preferences = {
-                    ...existingPreferences,
-                    learning_style: value
-                }
-            }
-
-            await updateUserProfileFn({ data: updateData })
+            userPreferencesStore.set({ ageGroup: newAge, learningStyle: newStyle })
             toast.success('Preference updated', { id: 'pref-update', duration: 1000 })
         } catch (e) {
             console.error(e)
             toast.error('Failed to save preference')
-            // Revert could go here
         } finally {
             setUpdating(false)
         }
     }
 
-    if (loading) return null
 
     const ageOptions = [
         { value: 'kid', label: 'Kid', icon: Baby, desc: 'Simple & Fun' },

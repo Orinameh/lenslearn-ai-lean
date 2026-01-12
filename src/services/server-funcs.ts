@@ -1,8 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
 import { analyzeScene, getExplanation } from '../services/gemini'
-import { requireUser } from './auth-helper'
-import { getSupabaseServerClient } from './supabase-server'
-import { AIGovernanceService } from './ai-governance'
 
 export const processMediaAnalysisFn = createServerFn({ method: 'POST' })
   .inputValidator(
@@ -11,109 +8,43 @@ export const processMediaAnalysisFn = createServerFn({ method: 'POST' })
       fileName: string
       fileType: string
       initialPrompt?: string
+      preferences?: { ageGroup: string; learningStyle: string }
     }) => d,
   )
   .handler(async ({ data }) => {
-    const { user, supabase } = await requireUser()
-    const serverClient = getSupabaseServerClient()
-    const governance = new AIGovernanceService(serverClient)
+    // POC: Bypass Auth & Governance
+    // No user check, no DB check
 
-    // 1. Governance & Routing
-    let decision
+    // Default Model
+    const model = process.env.GEMINI_MAIN_MODEL || 'gemini-1.5-pro'
+
     try {
-      decision = await governance.routeRequest(user.id, 'image')
-    } catch (error: any) {
-      throw new Error(error.message)
-    }
+      const buffer = Buffer.from(data.base64, 'base64')
 
-    if (!decision.canProceed) {
-      if (decision.tier === 'black') {
-        throw new Error('Monthly plan limit reached.')
-      }
-      throw new Error('PAYMENT_REQUIRED')
-    }
+      const mediaId = `mock-media-${Date.now()}`
 
-    // Prepare for parallel execution
-    const timestamp = Date.now()
-    const sanitizedFileName = data.fileName.replace(/[^a-zA-Z0-9.-]/g, '_')
-    const uniqueFileName = `${user.id}/${timestamp}-${sanitizedFileName}`
-    const buffer = Buffer.from(data.base64, 'base64')
-
-    // 2. Fetch profile first (fast) to ensure AI personalization
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', user.id)
-      .single()
-
-    // 3. Parallel Execution: Storage Upload + AI Analysis
-    // Overlapping these two long-running tasks for maximum performance
-    try {
-      const [uploadResult, analysisResult] = await Promise.all([
-        // Task A: Storage Upload
-        serverClient.storage
-          .from('media-uploads')
-          .upload(uniqueFileName, buffer, {
-            contentType: data.fileType,
-            upsert: false,
-          }),
-
-        // Task B: AI Scene Analysis (Personalized)
-        analyzeScene(
-          buffer,
-          data.fileType,
-          profile,
-          decision.model,
-          data.initialPrompt,
-        ),
-      ])
-
-      if (uploadResult.error) {
-        throw new Error(`Upload failed: ${uploadResult.error.message}`)
+      const mockProfile = {
+        age_group: data.preferences?.ageGroup || 'adult',
+        preferences: {
+          learning_style: data.preferences?.learningStyle || 'balanced',
+        },
       }
 
-      const {
-        data: { publicUrl },
-      } = serverClient.storage
-        .from('media-uploads')
-        .getPublicUrl(uniqueFileName)
-
-      // 4. Audit & Final DB Insert (Atomic)
-      await governance.auditTransaction(user.id, 'image')
-
-      const { data: mediaRecord, error: insertError } = await serverClient
-        .from('media')
-        .insert({
-          user_id: user.id,
-          type: 'image',
-          storage_url: publicUrl,
-          analysis_data: analysisResult,
-          is_watermarked: false,
-        })
-        .select('id')
-        .single()
-
-      if (insertError) {
-        // Cleanup storage on DB failure
-        await serverClient.storage
-          .from('media-uploads')
-          .remove([uniqueFileName])
-        throw new Error(`Failed to save media record: ${insertError.message}`)
-      }
+      const analysisResult = await analyzeScene(
+        buffer,
+        data.fileType,
+        mockProfile as any, // Mock profile
+        model,
+        data.initialPrompt,
+      )
 
       return {
-        mediaId: mediaRecord.id,
+        mediaId: mediaId,
         analysis: analysisResult,
-        model: decision.model,
+        model: model,
       }
     } catch (error: any) {
-      // General cleanup for parallel failures
       console.error('[processMediaAnalysisFn] Fatal Error:', error)
-      // Attempt to clean up storage if it might have succeeded
-      await serverClient.storage
-        .from('media-uploads')
-        .remove([uniqueFileName])
-        .catch(() => {})
       throw error
     }
   })
@@ -124,74 +55,39 @@ export const getExplanationFn = createServerFn({ method: 'POST' })
       context: string
       question: string
       history?: { role: string; text: string }[]
+      preferences?: { ageGroup: string; learningStyle: string }
     }) => d,
   )
   .handler(async ({ data }) => {
-    const { user, supabase } = await requireUser()
-    const serverClient = getSupabaseServerClient()
-    const governance = new AIGovernanceService(serverClient)
+    // POC: Bypass Auth
+    const model = process.env.GEMINI_MAIN_MODEL || 'gemini-1.5-pro'
 
-    // 1. Governance Routing
-    let decision
-    try {
-      decision = await governance.routeRequest(user.id, 'text')
-    } catch (error: any) {
-      throw new Error(error.message)
-    }
-
-    if (!decision.canProceed) {
-      if (decision.tier === 'black') {
-        return 'You have reached your learning limit for this month. Please review your previous sessions.'
-      }
-      throw new Error('PAYMENT_REQUIRED')
-    }
-
-    // Fetch profile for personalization
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', user.id)
-      .single()
-
-    // 2. Execute AI Service
+    // Execute AI Service
     let result = ''
-    let isSafetyBlock = false
     try {
+      const mockProfile = {
+        age_group: data.preferences?.ageGroup || 'adult',
+        preferences: {
+          learning_style: data.preferences?.learningStyle || 'balanced',
+        },
+      }
+
       result = await getExplanation(
         data.context,
         data.question,
-        profile,
-        decision.model,
+        mockProfile as any, // Mock Profile
+        model,
         data.history || [],
       )
     } catch (error: any) {
-      if (
-        error.message?.includes('SAFETY') ||
-        error.message?.includes('blocked')
-      ) {
-        isSafetyBlock = true
-        result =
-          "I'm sorry, I cannot provide an explanation for this request as it falls outside our safety guidelines for educational content."
-      } else {
-        throw error
-      }
+      throw error
     }
 
-    // 3. Audit Cost (Async)
-    const tokensIn = (data.context.length + data.question.length) / 4
-    const tokensOut = result.length / 4
-    await governance.auditTransaction(
-      user.id,
-      'text',
-      tokensIn,
-      tokensOut,
-      isSafetyBlock,
-      data.question,
-    )
+    // POC: No Audit
 
     return {
       result,
-      model: decision.model,
+      model: model,
     }
   })
 
@@ -201,40 +97,13 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
       context: string
       question: string
       history?: { role: string; text: string }[]
+      preferences?: { ageGroup: string; learningStyle: string }
     }) => d,
   )
   .handler(async ({ data }) => {
     try {
-      const { user, supabase } = await requireUser()
-      const serverClient = getSupabaseServerClient()
-      const governance = new AIGovernanceService(serverClient)
-
-      let decision
-      try {
-        decision = await governance.routeRequest(user.id, 'text')
-      } catch (error: any) {
-        console.error('[Governance Error]:', error)
-        return new Response(
-          JSON.stringify({ error: 'Governance check failed' }),
-          { status: 500, headers: { 'Content-Type': 'application/json' } },
-        )
-      }
-
-      if (!decision.canProceed) {
-        if (decision.tier === 'black') {
-          return new Response(
-            'You have reached your learning limit for this month.',
-            { status: 429 },
-          )
-        }
-        return new Response('PAYMENT_REQUIRED', { status: 402 })
-      }
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .single()
+      // POC: Bypass Auth
+      const model = process.env.GEMINI_MAIN_MODEL || 'gemini-1.5-pro'
 
       const { getExplanationStream } = await import('../services/gemini')
       const encoder = new TextEncoder()
@@ -242,95 +111,48 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
       let generator: AsyncGenerator<string, any, any>
 
       try {
+        const mockProfile = {
+          age_group: data.preferences?.ageGroup || 'adult',
+          preferences: {
+            learning_style: data.preferences?.learningStyle || 'balanced',
+          },
+        }
+
         generator = getExplanationStream(
           data.context,
           data.question,
-          profile,
-          decision.model,
+          mockProfile as any, // Mock Profile
+          model,
           data.history || [],
         )
       } catch (initError: any) {
         console.error('[Generator Init Error]:', initError)
-        const errorMessage = initError.message || JSON.stringify(initError)
-        const isRateLimit =
-          errorMessage.includes('429') || errorMessage.includes('QUOTA')
-        const status = isRateLimit ? 429 : 500
-        const body = isRateLimit
-          ? 'Usage limit exceeded.'
-          : 'Failed to start stream.'
-
-        return new Response(JSON.stringify({ error: body }), {
-          status,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        return new Response(
+          JSON.stringify({ error: 'Failed to start stream' }),
+          {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
       }
 
       const stream = new ReadableStream({
         async start(controller) {
           try {
-            let fullText = ''
             for await (const chunk of generator) {
-              fullText += chunk
               controller.enqueue(encoder.encode(chunk))
-            }
-            try {
-              const tokensIn = (data.context.length + data.question.length) / 4
-              const tokensOut = fullText.length / 4
-              await governance.auditTransaction(
-                user.id,
-                'text',
-                tokensIn,
-                tokensOut,
-                false,
-                data.question,
-              )
-            } catch (auditError) {
-              console.error('[Audit Error]:', auditError)
             }
             controller.close()
           } catch (streamError: any) {
-            const errorMessage =
-              streamError.message || JSON.stringify(streamError)
-            const isSafetyBlock =
-              errorMessage.includes('SAFETY') ||
-              errorMessage.includes('blocked')
-            const isRateLimit =
-              streamError.status === 429 ||
-              errorMessage.includes('429') ||
-              errorMessage.includes('QUOTA') ||
-              errorMessage.includes('Too Many Requests')
-
+            // POC: Simplified error handling in stream
+            console.error('[Stream Error]', streamError)
             try {
-              let errorMsg =
-                '\n\nAn error occurred while generating the response.'
-              if (isRateLimit) {
-                errorMsg = '\n\nRate limit exceeded. Please wait a moment.'
-              } else if (isSafetyBlock) {
-                errorMsg =
-                  '\n\n[Content blocked for safety/responsibility guidelines]'
-                // Audit safety block if we have the user context
-                try {
-                  await governance.auditTransaction(
-                    user.id,
-                    'text',
-                    0,
-                    0,
-                    true,
-                    data.question,
-                  )
-                } catch {}
-              }
-              controller.enqueue(encoder.encode(errorMsg))
-            } catch (e) {
-            } finally {
-              try {
-                controller.close()
-              } catch (e) {}
-            }
+              controller.enqueue(
+                encoder.encode('\n\nError generating response.'),
+              )
+              controller.close()
+            } catch {}
           }
-        },
-        cancel(reason) {
-          console.log('[Stream Cancelled]:', reason)
         },
       })
 
@@ -341,7 +163,7 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
           'X-Accel-Buffering': 'no',
-          'X-Model-ID': decision.model,
+          'X-Model-ID': model,
         },
       })
     } catch (error: any) {
