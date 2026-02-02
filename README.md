@@ -61,7 +61,7 @@ Authentication and paywalls have been bypassed for this demo. You are automatica
 
     ```env
     GEMINI_API_KEY=your_gemini_api_key
-    GEMINI_MAIN_MODEL=gemini-1.5-pro
+    GEMINI_MAIN_MODEL=gemini-3-flash-preview
     ```
 
 3.  Start the development server:

@@ -1,10 +1,8 @@
-import {
-  GoogleGenerativeAI,
-  HarmCategory,
-  HarmBlockThreshold,
-} from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY || '',
+})
 
 /**
  * Dynamic safety settings based on age group.
@@ -13,24 +11,24 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 function getSafetySettings(ageGroup: string) {
   const threshold =
     ageGroup === 'kid' || ageGroup === 'teen'
-      ? HarmBlockThreshold.BLOCK_LOW_AND_ABOVE
-      : HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
+      ? 'BLOCK_LOW_AND_ABOVE'
+      : 'BLOCK_MEDIUM_AND_ABOVE'
 
   return [
     {
-      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+      category: 'HARM_CATEGORY_HARASSMENT',
       threshold: threshold,
     },
     {
-      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+      category: 'HARM_CATEGORY_HATE_SPEECH',
       threshold: threshold,
     },
     {
-      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+      category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
       threshold: threshold,
     },
     {
-      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+      category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
       threshold: threshold,
     },
   ]
@@ -135,24 +133,28 @@ export async function analyzeScene(
     }
   `
 
-  /* Use dynamic model and safety settings */
-  const visionModel = genAI.getGenerativeModel({
+  const result = await ai.models.generateContent({
     model: modelId,
-    safetySettings: getSafetySettings(ageGroup),
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              data: imageBuffer.toString('base64'),
+              mimeType,
+            },
+          },
+        ],
+      },
+    ],
+    config: {
+      safetySettings: getSafetySettings(ageGroup) as any,
+    },
   })
 
-  const result = await visionModel.generateContent([
-    prompt,
-    {
-      inlineData: {
-        data: imageBuffer.toString('base64'),
-        mimeType,
-      },
-    },
-  ])
-
-  const response = result.response
-  const text = response.text()
+  const text = result.text || ''
 
   try {
     // Robust JSON extraction
@@ -270,12 +272,19 @@ export async function getExplanation(
     - **Encourage Curiosity**: Use a growth-mindset approach. Help the user learn how to think, not just what to think.
   `
 
-  const textModel = genAI.getGenerativeModel({
+  const result = await ai.models.generateContent({
     model: modelId,
-    safetySettings: getSafetySettings(ageGroup),
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: prompt }],
+      },
+    ],
+    config: {
+      safetySettings: getSafetySettings(ageGroup) as any,
+    },
   })
-  const result = await textModel.generateContent(prompt)
-  return result.response.text()
+  return result.text || ''
 }
 
 export async function* getExplanationStream(
@@ -380,16 +389,23 @@ export async function* getExplanationStream(
 
   `
 
-  const textModel = genAI.getGenerativeModel({
+  const result = await ai.models.generateContentStream({
     model: modelId,
-    safetySettings: getSafetySettings(ageGroup),
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: prompt }],
+      },
+    ],
+    config: {
+      safetySettings: getSafetySettings(ageGroup) as any,
+    },
   })
-  const result = await textModel.generateContentStream(prompt)
 
   try {
-    for await (const chunk of result.stream) {
+    for await (const chunk of result) {
       try {
-        const text = chunk.text()
+        const text = chunk.text || ''
         if (text) {
           yield text
         }

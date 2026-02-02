@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { analyzeScene, getExplanation } from '../services/gemini'
+import { analyzeScene } from '../services/gemini'
 
 export const processMediaAnalysisFn = createServerFn({ method: 'POST' })
   .inputValidator(
@@ -16,7 +16,7 @@ export const processMediaAnalysisFn = createServerFn({ method: 'POST' })
     // No user check, no DB check
 
     // Default Model
-    const model = process.env.GEMINI_MAIN_MODEL || 'gemini-1.5-pro'
+    const model = process.env.GEMINI_MAIN_MODEL || 'gemini-3-flash-preview'
 
     try {
       const buffer = Buffer.from(data.base64, 'base64')
@@ -49,48 +49,6 @@ export const processMediaAnalysisFn = createServerFn({ method: 'POST' })
     }
   })
 
-export const getExplanationFn = createServerFn({ method: 'POST' })
-  .inputValidator(
-    (d: {
-      context: string
-      question: string
-      history?: { role: string; text: string }[]
-      preferences?: { ageGroup: string; learningStyle: string }
-    }) => d,
-  )
-  .handler(async ({ data }) => {
-    // POC: Bypass Auth
-    const model = process.env.GEMINI_MAIN_MODEL || 'gemini-1.5-pro'
-
-    // Execute AI Service
-    let result = ''
-    try {
-      const mockProfile = {
-        age_group: data.preferences?.ageGroup || 'adult',
-        preferences: {
-          learning_style: data.preferences?.learningStyle || 'balanced',
-        },
-      }
-
-      result = await getExplanation(
-        data.context,
-        data.question,
-        mockProfile as any, // Mock Profile
-        model,
-        data.history || [],
-      )
-    } catch (error: any) {
-      throw error
-    }
-
-    // POC: No Audit
-
-    return {
-      result,
-      model: model,
-    }
-  })
-
 export const getExplanationStreamFn = createServerFn({ method: 'POST' })
   .inputValidator(
     (d: {
@@ -103,7 +61,7 @@ export const getExplanationStreamFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     try {
       // POC: Bypass Auth
-      const model = process.env.GEMINI_MAIN_MODEL || 'gemini-1.5-pro'
+      const model = process.env.GEMINI_MAIN_MODEL || 'gemini-3-flash-preview'
 
       const { getExplanationStream } = await import('../services/gemini')
       const encoder = new TextEncoder()
